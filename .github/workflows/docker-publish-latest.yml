@@ -1,0 +1,17 @@
+name: Docker Publish Latest
+
+on:
+  push:
+    tags:
+    - '*'
+
+permissions:
+  packages: write
+
+jobs:
+  call-reusable-workflow:
+    uses: JourneyDocker/github-workflows/.github/workflows/docker-publish-github-only.yml@main
+    with:
+      tag: latest
+      platforms: linux/amd64
+    secrets: inherit
