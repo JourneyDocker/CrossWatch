@@ -1,0 +1,64 @@
+name: Sync Upstream
+
+on:
+  schedule:
+    - cron: '10 * * * *' # Run at :10 past every hour
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  actions: write
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+
+      - name: Configure Git
+        run: |
+          # GitHub Actions runners ship with no git identity, so this is NOT
+          # redundant -- without it `git merge` dies with
+          # "fatal: empty ident name (for <runner@...>) not allowed".
+          git config user.name "JourneyOver"
+          git config user.email "13910285+JourneyOver@users.noreply.github.com"
+
+      - name: Sync with upstream
+        run: |
+          git remote add upstream https://github.com/cenodude/CrossWatch.git \
+            || git remote set-url upstream https://github.com/cenodude/CrossWatch.git
+
+          git fetch upstream main
+
+          HEAD_BEFORE=$(git rev-parse HEAD)
+
+          if git merge upstream/main \
+            -m "Sync upstream changes from cenodude/CrossWatch" \
+            --no-edit; then
+            echo "Merge completed."
+          else
+            echo "::error::git merge failed (most often a merge conflict). See the git output above for the exact cause."
+            git merge --abort || true
+            exit 1
+          fi
+
+          HEAD_AFTER=$(git rev-parse HEAD)
+
+          if [ "$HEAD_BEFORE" != "$HEAD_AFTER" ]; then
+            git push origin main
+            echo "HAS_CHANGES=true" >> "$GITHUB_ENV"
+            echo "Upstream changes were successfully merged and pushed."
+          else
+            echo "No new upstream changes found."
+          fi
+
+      - name: Trigger Docker Publish Main
+        if: env.HAS_CHANGES == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: gh workflow run docker-publish-main.yml --repo "${{ github.repository }}" --ref main
