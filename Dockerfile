@@ -68,10 +68,6 @@ ENV RUNTIME_DIR=/config \
     EDITOR=nano \
     VISUAL=nano
 
-# --- healthcheck ---
-HEALTHCHECK --interval=30s --timeout=5s --retries=5 \
-  CMD ["python","-c","import os,socket,sys; s=socket.socket(); s.settimeout(2); p=int(os.environ.get('WEB_PORT','8787')); sys.exit(0 if s.connect_ex(('127.0.0.1',p))==0 else 1)"]
-
 EXPOSE 8787
 VOLUME ["/config"]
 
