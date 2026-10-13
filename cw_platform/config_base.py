@@ -55,8 +55,12 @@ DEFAULT_SCHEDULER_WEBHOOKS: dict[str, Any] = {
     "failure_url": "",
     "payload_format": "crosswatch",
     "notifiarr_channel_id": "",
+    "pushover_token": "",
+    "pushover_user": "",
     "timeout_seconds": 10,
     "alert_on_unresolved": False,
+    "alert_on_watcher": False,
+    "alert_on_provider_auth": False,
 }
 
 _ENC_PREFIX = "enc:v1:"
@@ -193,7 +197,7 @@ def _is_sensitive_path(path: tuple[str, ...]) -> bool:
         return True
 
     if len(clean) >= 3 and clean[0] == "scheduling" and clean[1] == "webhooks":
-        if clean[-1] in {"url", "default_url", "base_url", "healthchecks_base_url", "start_url", "success_url", "failure_url"}:
+        if clean[-1] in {"url", "default_url", "base_url", "healthchecks_base_url", "start_url", "success_url", "failure_url", "pushover_token", "pushover_user"}:
             return True
 
     leaf = clean[-1]
@@ -1097,7 +1101,7 @@ def redact_config(cfg: dict[str, Any]) -> dict[str, Any]:
     if isinstance(scheduling, dict):
         hooks = scheduling.get("webhooks")
         if isinstance(hooks, dict):
-            for key in ("url", "default_url", "base_url", "healthchecks_base_url", "start_url", "success_url", "failure_url"):
+            for key in ("url", "default_url", "base_url", "healthchecks_base_url", "start_url", "success_url", "failure_url", "pushover_token", "pushover_user"):
                 _mask_leaf(hooks, key)
 
     return out
@@ -1367,12 +1371,20 @@ def _normalize_scheduler_webhooks(value: Any) -> dict[str, Any]:
     out["alert_on_unresolved"] = _scheduler_webhook_flag(
         src.get("alert_on_unresolved") if src.get("alert_on_unresolved") is not None else src.get("alertOnUnresolved")
     )
+    out["alert_on_watcher"] = _scheduler_webhook_flag(
+        src.get("alert_on_watcher") if src.get("alert_on_watcher") is not None else src.get("alertOnWatcher")
+    )
+    out["alert_on_provider_auth"] = _scheduler_webhook_flag(
+        src.get("alert_on_provider_auth") if src.get("alert_on_provider_auth") is not None else src.get("alertOnProviderAuth")
+    )
     out["url"] = _http_url_or_blank(src.get("url") or src.get("default_url"))
     out["base_url"] = _http_url_or_blank(src.get("base_url") or src.get("healthchecks_base_url"))
     for key in ("start_url", "success_url", "failure_url"):
         out[key] = _http_url_or_blank(src.get(key))
     out["payload_format"] = _scheduler_webhook_payload_format(src.get("payload_format") or src.get("format"))
     out["notifiarr_channel_id"] = _digits_or_blank(src.get("notifiarr_channel_id") or src.get("notifiarrChannelId"))
+    out["pushover_token"] = _pushover_key_or_blank(src.get("pushover_token") or src.get("pushoverToken"))
+    out["pushover_user"] = _pushover_key_or_blank(src.get("pushover_user") or src.get("pushoverUser"))
     try:
         timeout = int(src.get("timeout_seconds", 10) or 10)
     except Exception:
@@ -1398,12 +1410,19 @@ def _scheduler_webhook_payload_format(value: Any) -> str:
     text = str(value or "").strip().lower().replace("-", "_")
     if text in {"notifiarr", "notifiarr_passthrough"}:
         return "notifiarr"
+    if text in {"pushover", "ntfy"}:
+        return text
     return "crosswatch"
 
 
 def _digits_or_blank(value: Any) -> str:
     text = str(value or "").strip()
     return text if text.isdigit() else ""
+
+
+def _pushover_key_or_blank(value: Any) -> str:
+    text = str(value or "").strip()
+    return text if len(text) == 30 and text.isascii() and text.isalnum() else ""
 
 
 def _set_nested_value(dst: dict[str, Any], path: str | Iterable[str], value: Any) -> None:
