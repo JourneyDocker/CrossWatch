@@ -32,6 +32,7 @@ ROUTE_POLL_KEYS = ("poll_seconds", "idle_poll_seconds")
 ROUTE_POLL_PROVIDERS = {"emby", "jellyfin", "kodi", "scrob"}
 ROUTE_WATCH_BOOLEAN_KEYS = {"unresolved_user_fallback", "anime_mapping", "simkl_rewatches", "plexkodiconnect_support"}
 ROUTE_WATCH_STRICT_BOOLEAN_KEYS = {"simkl_rewatches", "plexkodiconnect_support"}
+ROUTE_WETRAKR_BOOLEAN_KEYS = ("wetrakr_skip_start", "wetrakr_force_pause_below_threshold")
 
 
 def same_scrobble_endpoint(provider: Any, provider_instance: Any, sink: Any, sink_instance: Any) -> bool:
@@ -175,6 +176,10 @@ def normalize_route_options(options: Any) -> dict[str, Any]:
         if "update_all_copies" in destination_raw:
             destination["update_all_copies"] = destination_raw.get("update_all_copies") is not False
         out["destination"] = destination
+
+    for key in ROUTE_WETRAKR_BOOLEAN_KEYS:
+        if key in raw:
+            out[key] = bool(raw.get(key))
     return out
 
 
@@ -214,6 +219,9 @@ def normalize_route(route: dict[str, Any], fallback_id: str) -> dict[str, Any]:
             options["watch"].pop(key, None)
     if sink not in ROUTE_MEDIA_SINKS:
         options.pop("destination", None)
+    if sink != "wetrakr":
+        for key in ROUTE_WETRAKR_BOOLEAN_KEYS:
+            options.pop(key, None)
     profile_id = normalize_user_profile_id(r.get("profile_id") or r.get("profileId"))
 
     out = {
