@@ -482,3 +482,20 @@ def test_wetrakr_skip_start_does_not_block_pause_or_stop(live):
     assert stop_result["ok"] and stop_result["action"] == "scrobble"
     assert posts(live)[-1][0] == "/scrobble/stop"
     assert len(live.server.history) == 1
+
+
+def test_wetrakr_skip_start_tracks_progress_so_final_stop_scrobbles(live):
+    """Regression: pause at 6, resume and play through, stop at the end.
+    The skipped resume/progress starts must still advance session state,
+    otherwise the suspicious-completion safeguard misfires on the stale
+    pause progress and downgrades the legitimate final stop to a pause."""
+    cfg = {**live.view, "scrobble": {"watch": {"route_options": {"wetrakr_skip_start": True}}}}
+    assert live.sink.send(event(action="pause", progress=6), cfg)["ok"]
+    for progress in (6, 25, 50, 75, 95):
+        skipped = live.sink.send(event(action="start", progress=progress), cfg)
+        assert skipped["skipped"] and skipped["reason"] == "start_skipped_by_option"
+    result = live.sink.send(event(action="stop", progress=99), cfg)
+    assert result["ok"] and result["action"] == "scrobble"
+    path, body = posts(live)[-1]
+    assert path == "/scrobble/stop" and body["progress"] == 99
+    assert len(live.server.history) == 1

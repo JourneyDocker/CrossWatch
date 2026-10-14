@@ -123,9 +123,9 @@ class WeTrakrSink:
         route_opts = watch_cfg.get("route_options") if isinstance(watch_cfg.get("route_options"), Mapping) else {}
         skip_start = bool(route_opts.get("wetrakr_skip_start"))
         force_pause_below = bool(route_opts.get("wetrakr_force_pause_below_threshold"))
-        if event.action == "start" and skip_start:
-            _log("start skipped by route option wetrakr_skip_start", "DEBUG")
-            return {"ok": True, "skipped": True, "reason": "start_skipped_by_option"}
+        # NOTE: the skip_start short-circuit lives below session bookkeeping on purpose.
+        # Skipped starts are still tracked in state["progress"] so the suspicious-completion
+        # safeguard at final stop evaluates against the real position, not a stale pause.
 
         try:
             item = _item(event)
@@ -158,6 +158,10 @@ class WeTrakrSink:
                 return {"ok": False, "error": "completion_unconfirmed", "retryable": False}
             if state.get("completed"):
                 return {"ok": True, "skipped": True, "reason": "session_completed"}
+            if event.action == "start" and skip_start:
+                state.update(action="start", progress=progress)
+                _log("start tracked but not sent by route option wetrakr_skip_start", "DEBUG")
+                return {"ok": True, "skipped": True, "reason": "start_skipped_by_option"}
             action = event.action
             if action == "stop":
                 action = resolve_stop_action(progress, max(80, _setting(config, "watched_at", 90)))

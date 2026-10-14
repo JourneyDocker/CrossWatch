@@ -533,7 +533,6 @@ function optionsPanel(r) {
   return `
     <section class="scrm-panel ${activeTab === "options" ? "active" : ""}" data-panel="options">
       ${anilistHint}
-      ${wetrakrOptions}
       <div class="scrm-journey scrm-journey-compact">
         <span class="material-symbols-rounded scrm-journey-icon">tune</span>
         <div><strong>Route-level behavior</strong><p>These settings apply to this route and override the global defaults.<br><b>Leave them at their defaults unless you know what you are doing.</b></p></div>
@@ -550,6 +549,7 @@ function optionsPanel(r) {
       </div>
       ${unresolvedFallback}
       ${pkcSupport}
+      ${wetrakrOptions}
       ${animeMapping}
       ${r.sink === "simkl" ? `<label class="scrm-toggle-row"><span class="scrm-toggle-copy"><span class="material-symbols-rounded">replay</span><span><strong>Track rewatches</strong><small>Allow repeat watches on this route. Requires SIMKL Pro or VIP. SIMKL applies a 48-hour gap per movie or episode. Your watched threshold still applies, with a minimum of 80%.</small></span></span><span class="scrm-switch"><input type="checkbox" id="scr-simkl-rewatches" ${r.options.watch?.simkl_rewatches === true ? "checked" : ""}><span class="scrm-switch-track"></span></span></label>` : ""}
     </section>
