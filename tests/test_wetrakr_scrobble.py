@@ -349,3 +349,153 @@ def test_playback_service_bulk_and_active_protection(live, monkeypatch):
     records = [r.to_dict() for r in adapter.list_progress(live.view, **args).items]
     result = svc.bulk({"action": "remove_progress", "items": records})
     assert result["successful"] == 2 and result["failed"] == 0 and not live.playing
+
+
+@pytest.mark.parametrize("action,expect_http", [("start", False), ("pause", True), ("stop", True)])
+def test_wetrakr_skip_start_blocks_start_only(live, action, expect_http):
+    cfg = {**live.view, "scrobble": {"watch": {"route_options": {"wetrakr_skip_start": True}}}}
+    progress = 95 if action == "stop" else 30
+    ev = event(action=action, progress=progress)
+    before_calls = len([c for c in live.server.calls if c[0] == "POST"])
+    result = live.sink.send(ev, cfg)
+    after_calls = len([c for c in live.server.calls if c[0] == "POST"])
+    assert result["ok"]
+    if action == "start":
+        assert result["skipped"] and result["reason"] == "start_skipped_by_option"
+        assert after_calls == before_calls, "skip_start must not produce an HTTP request"
+    else:
+        assert expect_http and after_calls > before_calls, f"action={action} should still hit the server"
+
+
+@pytest.mark.parametrize("watched_at,progress,expect_pause_at_79,expect_path", [
+    (90, 85, True, "/scrobble/pause"),
+    (90, 79, False, "/scrobble/pause"),
+    (90, 80, True, "/scrobble/pause"),
+    (95, 92, True, "/scrobble/pause"),
+    (75, 85, False, "/scrobble/stop"),
+    (90, 95, False, "/scrobble/stop"),
+])
+def test_wetrakr_force_pause_below_threshold_caps_at_79(live, watched_at, progress, expect_pause_at_79, expect_path):
+    cfg = {**live.view, "scrobble": {"trakt": {"watched_at": watched_at},
+                                     "watch": {"route_options": {"wetrakr_force_pause_below_threshold": True}}}}
+    result = live.sink.send(event(action="stop", progress=progress), cfg)
+    assert result["ok"]
+    path, body = posts(live)[-1]
+    if expect_pause_at_79:
+        assert path == "/scrobble/pause" and body["progress"] == 79.0
+        assert result["action"] == "pause"
+        assert not live.server.history
+    else:
+        assert path == expect_path
+
+
+def test_wetrakr_skip_start_and_force_pause_below_threshold_combined(live):
+    cfg = {**live.view, "scrobble": {"trakt": {"watched_at": 90},
+                                     "watch": {"route_options": {"wetrakr_skip_start": True,
+                                                                  "wetrakr_force_pause_below_threshold": True}}}}
+    skip = live.sink.send(event(action="start", progress=5), cfg)
+    assert skip["reason"] == "start_skipped_by_option"
+    assert not posts(live), "skip_start must not produce an HTTP request"
+    stop = live.sink.send(event(action="stop", progress=85), cfg)
+    assert stop["ok"] and stop["action"] == "pause"
+    path, body = posts(live)[-1]
+    assert path == "/scrobble/pause" and body["progress"] == 79.0
+    assert not live.server.history
+
+
+def test_wetrakr_options_default_off_keep_existing_behavior(live):
+    """Without either new option, behavior must match the existing flow."""
+    cfg = {**live.view, "scrobble": {"trakt": {"watched_at": 90}}}
+    start = live.sink.send(event(action="start", progress=10), cfg)
+    assert start["ok"]
+    stop = live.sink.send(event(action="stop", progress=85), cfg)
+    assert stop["ok"] and stop["action"] == "pause"
+    path, body = posts(live)[-1]
+    assert path == "/scrobble/pause" and body["progress"] == 85.0
+
+
+def test_wetrakr_force_pause_below_threshold_respects_preserve_stop(live):
+    cfg = {**live.view, "scrobble": {"trakt": {"watched_at": 90},
+                                     "watch": {"route_options": {"wetrakr_force_pause_below_threshold": True}}}}
+    result = live.sink.send(event(action="stop", progress=85, raw={"_cw_preserve_stop": True}), cfg)
+    assert result["ok"] and result["action"] == "pause"
+    path, body = posts(live)[-1]
+    assert path == "/scrobble/pause" and body["progress"] == 85.0
+    assert not live.server.history
+
+
+def test_wetrakr_skip_start_blocks_repeated_progress_updates(live):
+    """Ongoing progress updates arrive as 'start' actions; skip_start must drop them all."""
+    cfg = {**live.view, "scrobble": {"watch": {"route_options": {"wetrakr_skip_start": True}}}}
+    for progress in (5, 12, 28, 47, 63):
+        result = live.sink.send(event(action="start", progress=progress), cfg)
+        assert result["skipped"] and result["reason"] == "start_skipped_by_option"
+    assert not posts(live), "no HTTP request should ever reach the server"
+
+
+def test_wetrakr_force_pause_below_threshold_does_not_complete_or_remove(live, monkeypatch):
+    """When the option turns a stop into a pause below the watched threshold,
+    completion tracking and auto-remove-from-watchlists must NOT fire."""
+    cfg = {**live.view, "scrobble": {
+        "trakt": {"watched_at": 90},
+        "delete_plex": True,
+        "delete_plex_types": ["movies"],
+        "watch": {"route_options": {"wetrakr_force_pause_below_threshold": True}},
+    }}
+    assert live.sink.send(event(action="start", progress=10), cfg)["ok"]
+    result = live.sink.send(event(action="stop", progress=85), cfg)
+    assert result["ok"] and result["action"] == "pause"
+    assert not live.server.history, "watched must not be recorded for paused items"
+    assert not live.completed, "scrobble completion must not be recorded"
+    assert not live.removed, "watchlist auto-remove must not run"
+    assert posts(live)[-1][1]["progress"] == 79.0
+
+
+def test_wetrakr_force_pause_below_threshold_safeguard_path_keeps_progress_below_80(live):
+    """The previous-progress safeguard can fire when progress jumps from <80 to >=98.
+    force_pause_below must still ensure no /scrobble/pause is ever sent at >= 80%, regardless
+    of which branch (force_pause_below initial block, safeguard, or final clamp) produces it."""
+    cfg = {**live.view, "scrobble": {"trakt": {"watched_at": 100, "stop_pause_threshold": 85},
+                                     "watch": {"route_options": {"wetrakr_force_pause_below_threshold": True}}}}
+    # Start at 68 sets state["progress"]=68, state["action"]="start" — action differs from
+    # the upcoming pause so the debounce path will not fire.
+    assert live.sink.send(event(action="start", progress=68), cfg)["ok"]
+    # Stop at 99, watched_at=100: resolve_stop_action returns "pause", force_pause_below pins
+    # body to 79, then the safeguard fires (jump >= 30, previous=68 < 85) and overwrites body to 68.
+    result = live.sink.send(event(action="stop", progress=99), cfg)
+    assert result["ok"] and result["action"] == "pause"
+    path, body = posts(live)[-1]
+    assert path == "/scrobble/pause"
+    assert body["progress"] < 80, f"pause body progress must be < 80 to avoid WeTrakr auto-watched, got {body['progress']}"
+    assert not live.server.history
+    assert not live.completed
+
+
+def test_wetrakr_skip_start_does_not_block_pause_or_stop(live):
+    """Genuine pause events must still be forwarded with skip_start on."""
+    cfg = {**live.view, "scrobble": {"watch": {"route_options": {"wetrakr_skip_start": True}}}}
+    assert live.sink.send(event(action="start", progress=5), cfg)["skipped"]
+    pause_result = live.sink.send(event(action="pause", progress=40), cfg)
+    assert pause_result["ok"] and pause_result["action"] == "pause"
+    assert posts(live)[-1][0] == "/scrobble/pause"
+    stop_result = live.sink.send(event(action="stop", progress=95), cfg)
+    assert stop_result["ok"] and stop_result["action"] == "scrobble"
+    assert posts(live)[-1][0] == "/scrobble/stop"
+    assert len(live.server.history) == 1
+
+
+def test_wetrakr_skip_start_tracks_progress_so_final_stop_scrobbles(live):
+    """Regression: pause at 6, resume and play through, stop at the end.
+    The skipped resume/progress starts must still advance session state,
+    otherwise the suspicious-completion safeguard misfires on the stale
+    pause progress and downgrades the legitimate final stop to a pause."""
+    cfg = {**live.view, "scrobble": {"watch": {"route_options": {"wetrakr_skip_start": True}}}}
+    assert live.sink.send(event(action="pause", progress=6), cfg)["ok"]
+    for progress in (6, 25, 50, 75, 95):
+        skipped = live.sink.send(event(action="start", progress=progress), cfg)
+        assert skipped["skipped"] and skipped["reason"] == "start_skipped_by_option"
+    result = live.sink.send(event(action="stop", progress=99), cfg)
+    assert result["ok"] and result["action"] == "scrobble"
+    path, body = posts(live)[-1]
+    assert path == "/scrobble/stop" and body["progress"] == 99
+    assert len(live.server.history) == 1

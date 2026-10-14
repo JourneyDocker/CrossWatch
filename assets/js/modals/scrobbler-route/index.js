@@ -526,6 +526,10 @@ function optionsPanel(r) {
     ? `<label class="scrm-toggle-row ${animeGlobalOn ? "" : "is-disabled"}"><span class="scrm-toggle-copy"><span class="material-symbols-rounded">animation</span><span><strong>Anime ID Mapping</strong><small>${animeGlobalOn ? "Use local anime mappings for this route before sending watcher scrobbles." : "Enable global Anime ID Mapping first."}</small></span></span><span class="scrm-switch"><input type="checkbox" id="scr-anime-mapping" ${r.options.watch?.anime_mapping ? "checked" : ""} ${animeGlobalOn ? "" : "disabled"}><span class="scrm-switch-track"></span></span></label>`
     : "";
   const anilistHint = r.sink === "anilist" ? anilistMappingHint(animeGlobalOn) : "";
+  const wetrakrOptions = r.sink === "wetrakr"
+    ? `<label class="scrm-toggle-row"><span class="scrm-toggle-copy"><span class="material-symbols-rounded">play_disabled</span><span><strong>Only send pause and stop</strong><small>Skip start events and progress pings; only pause and stop are forwarded to WeTrakr.</small></span></span><span class="scrm-switch"><input type="checkbox" id="scr-wetrakr-skip-start" ${r.options?.wetrakr_skip_start ? "checked" : ""}><span class="scrm-switch-track"></span></span></label>
+       <label class="scrm-toggle-row"><span class="scrm-toggle-copy"><span class="material-symbols-rounded">pause_circle</span><span><strong>Pause instead of watched below threshold</strong><small>When a stop is between 80% and the watched threshold, send a pause at 79% to avoid automatic watched marking.</small></span></span><span class="scrm-switch"><input type="checkbox" id="scr-wetrakr-force-pause-below-threshold" ${r.options?.wetrakr_force_pause_below_threshold ? "checked" : ""}><span class="scrm-switch-track"></span></span></label>`
+    : "";
   return `
     <section class="scrm-panel ${activeTab === "options" ? "active" : ""}" data-panel="options">
       ${anilistHint}
@@ -545,6 +549,7 @@ function optionsPanel(r) {
       </div>
       ${unresolvedFallback}
       ${pkcSupport}
+      ${wetrakrOptions}
       ${animeMapping}
       ${r.sink === "simkl" ? `<label class="scrm-toggle-row"><span class="scrm-toggle-copy"><span class="material-symbols-rounded">replay</span><span><strong>Track rewatches</strong><small>Allow repeat watches on this route. Requires SIMKL Pro or VIP. SIMKL applies a 48-hour gap per movie or episode. Your watched threshold still applies, with a minimum of 80%.</small></span></span><span class="scrm-switch"><input type="checkbox" id="scr-simkl-rewatches" ${r.options.watch?.simkl_rewatches === true ? "checked" : ""}><span class="scrm-switch-track"></span></span></label>` : ""}
     </section>
@@ -726,6 +731,8 @@ function collect() {
   if (String(root.querySelector("#scr-sink")?.value || draft.sink || "").toLowerCase() === "simkl") watch.simkl_rewatches = !!root.querySelector("#scr-simkl-rewatches")?.checked;
   const ratingsMode = root.querySelector("#scr-ratings-mode")?.value || "off";
   const sinkValue = String(sinkEl?.value || draft.sink || "").toLowerCase();
+  const wetrakr_skip_start = !!root.querySelector("#scr-wetrakr-skip-start")?.checked;
+  const wetrakr_force_pause_below_threshold = !!root.querySelector("#scr-wetrakr-force-pause-below-threshold")?.checked;
   const previousDestination = draft?.options?.destination || {};
   const copiesEl = root.querySelector("#scr-update-all-copies");
   const destination = mediaSinks.includes(sinkValue) ? {
@@ -746,6 +753,7 @@ function collect() {
       scrobble,
       watch,
       ...(destination ? { destination } : {}),
+      ...(sinkValue === "wetrakr" ? { wetrakr_skip_start, wetrakr_force_pause_below_threshold } : {}),
       ratings: provider === "plex" ? {
         mode: ratingsMode,
         targets: [...root.querySelectorAll("[data-rating-target]:checked")].map((x) => x.dataset.ratingTarget),
