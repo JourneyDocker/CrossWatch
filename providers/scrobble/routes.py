@@ -179,7 +179,7 @@ def normalize_route_options(options: Any) -> dict[str, Any]:
 
     for key in ROUTE_WETRAKR_BOOLEAN_KEYS:
         if key in raw:
-            out[key] = bool(raw.get(key))
+            out[key] = raw.get(key) is True
     return out
 
 

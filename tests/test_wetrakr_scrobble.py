@@ -452,7 +452,7 @@ def test_wetrakr_force_pause_below_threshold_does_not_complete_or_remove(live, m
 
 
 def test_wetrakr_force_pause_below_threshold_safeguard_path_keeps_progress_below_80(live):
-    """The previous-progress safeguard can fire when progress jumps from <80 to >=97.
+    """The previous-progress safeguard can fire when progress jumps from <80 to >=98.
     force_pause_below must still ensure no /scrobble/pause is ever sent at >= 80%, regardless
     of which branch (force_pause_below initial block, safeguard, or final clamp) produces it."""
     cfg = {**live.view, "scrobble": {"trakt": {"watched_at": 100, "stop_pause_threshold": 85},
@@ -481,4 +481,21 @@ def test_wetrakr_skip_start_does_not_block_pause_or_stop(live):
     stop_result = live.sink.send(event(action="stop", progress=95), cfg)
     assert stop_result["ok"] and stop_result["action"] == "scrobble"
     assert posts(live)[-1][0] == "/scrobble/stop"
+    assert len(live.server.history) == 1
+
+
+def test_wetrakr_skip_start_tracks_progress_so_final_stop_scrobbles(live):
+    """Regression: pause at 6, resume and play through, stop at the end.
+    The skipped resume/progress starts must still advance session state,
+    otherwise the suspicious-completion safeguard misfires on the stale
+    pause progress and downgrades the legitimate final stop to a pause."""
+    cfg = {**live.view, "scrobble": {"watch": {"route_options": {"wetrakr_skip_start": True}}}}
+    assert live.sink.send(event(action="pause", progress=6), cfg)["ok"]
+    for progress in (6, 25, 50, 75, 95):
+        skipped = live.sink.send(event(action="start", progress=progress), cfg)
+        assert skipped["skipped"] and skipped["reason"] == "start_skipped_by_option"
+    result = live.sink.send(event(action="stop", progress=99), cfg)
+    assert result["ok"] and result["action"] == "scrobble"
+    path, body = posts(live)[-1]
+    assert path == "/scrobble/stop" and body["progress"] == 99
     assert len(live.server.history) == 1
