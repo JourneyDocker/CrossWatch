@@ -65,10 +65,10 @@ def log(msg: str, level: str = "INFO", module: str = "AUTH", **_: Any) -> None:
         pass
 
 
-API = "https://api.trakt.tv"
-OAUTH_DEVICE_CODE = f"{API}/oauth/device/code"
-OAUTH_DEVICE_TOKEN = f"{API}/oauth/device/token"
-OAUTH_TOKEN = f"{API}/oauth/token"
+OAUTH_BASE = "https://auth.trakt.tv/oauth"
+OAUTH_DEVICE_CODE = f"{OAUTH_BASE}/device/code"
+OAUTH_DEVICE_TOKEN = f"{OAUTH_BASE}/device/token"
+OAUTH_TOKEN = f"{OAUTH_BASE}/token"
 VERIFY_URL = "https://auth.trakt.tv/activate"
 DEFAULT_CLIENT_ID = "e9286c08d7a3c84d4df03cf47a9dc464b8b0142844f83f4c4226b9a96e6c49d1"
 CLIENT_ID_ENV = "CROSSWATCH_TRAKT_CLIENT_ID"
@@ -183,7 +183,7 @@ class _TraktProvider:
             ],
             actions={"start": True, "finish": True, "refresh": True, "disconnect": True},
             verify_url=VERIFY_URL,
-            notes="Open Trakt, enter the code, then return here. The PIN flow uses CrossWatch's built-in public client_id. Client ID/Secret are only needed for your own Trakt app.",
+            notes="Both connection methods use a device PIN. Use the built-in client or your own Client ID. A Client Secret is optional for older apps.",
         )
 
     def capabilities(self) -> dict[str, Any]:
@@ -326,8 +326,8 @@ class _TraktProvider:
                   <input id="trakt_client_id" name="trakt_client_id" placeholder="Enter your Trakt Client ID" autocomplete="off" spellcheck="false" autocapitalize="off">
                 </div>
                 <div>
-                  <label for="trakt_client_secret">Client Secret</label>
-                  <input id="trakt_client_secret" name="trakt_client_secret" type="password" placeholder="Enter your Trakt Client Secret" autocomplete="off" spellcheck="false" autocapitalize="off" data-lpignore="true" data-1p-ignore="true" data-bwignore="true">
+                  <label for="trakt_client_secret">Client Secret (optional)</label>
+                  <input id="trakt_client_secret" name="trakt_client_secret" type="password" placeholder="Leave blank if not issued" autocomplete="off" spellcheck="false" autocapitalize="off" data-lpignore="true" data-1p-ignore="true" data-bwignore="true">
                 </div>
               </div>
 
@@ -338,6 +338,7 @@ class _TraktProvider:
                   <button id="btn-copy-trakt-redirect" class="btn" type="button">Copy Redirect URL</button></span>
                 </span>
               </div>
+              <p class="sub">CrossWatch shows a PIN to enter on Trakt, then connects automatically. No redirect callback is used.</p>
             </div>
 
             <div id="trakt_pin_panel" class="trk-pane" data-method="pin">

@@ -178,10 +178,9 @@
   function updateTraktHint() {
     try {
       var cidState = _readSecretField(_el("trakt_client_id"));
-      var secState = _readSecretField(_el("trakt_client_secret"));
       var hint = _el("trakt_hint");
       if (!hint) return;
-      var show = currentTraktMethod() === "app" && !(cidState.hasValue && secState.hasValue);
+      var show = currentTraktMethod() === "app" && !cidState.hasValue;
       hint.classList.toggle("hidden", !show);
       hint.style.display = show ? "" : "none";
     } catch (_) {}
@@ -358,29 +357,49 @@
     ensureTraktPoller().start({ intervalMs: 2000, deadlineMs: Number(deadlineMs) || 0 });
   }
 
+  function openTraktPopup() {
+    var win = null;
+    try {
+      win = window.open("about:blank", "_blank");
+      if (win) {
+        win.opener = null;
+        win.document.title = "Connecting to Trakt";
+        win.document.documentElement.style.background = "#0b0d12";
+        win.document.body.style.cssText = "margin:0;height:100vh;display:flex;align-items:center;justify-content:center;background:#0b0d12;color:#e9eefb;font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif;text-align:center";
+        win.document.body.textContent = "Requesting your Trakt PIN…";
+      }
+    } catch (_) {}
+    return win;
+  }
+
+  function navigateTraktPopup(win, url) {
+    try {
+      if (win && !win.closed) {
+        win.location.href = url;
+        return true;
+      }
+    } catch (_) { try { win?.close(); } catch (_) {} }
+    return false;
+  }
+
   async function requestTraktPin() {
     try { trqcStop(); } catch (_) {}
     setTraktSuccess(false);
 
-    var cidEl = _el("trakt_client_id");
-    var secEl = _el("trakt_client_secret");
-    var cidState = _readSecretField(cidEl);
-    var secState = _readSecretField(secEl);
-
     var method = currentTraktMethod();
     var payload = { auth_method: method };
     if (method === "app") {
-      if (!cidState.hasValue) { _notify('Enter your Trakt Client ID'); return; }
-      if (!secState.hasValue) { _notify('Enter your Trakt Client Secret'); return; }
-      if (cidState.value) payload.client_id = cidState.value;
-      if (secState.value) payload.client_secret = secState.value;
+      var cid = _readSecretField(_el("trakt_client_id"));
+      var secret = _readSecretField(_el("trakt_client_secret"));
+      if (!cid.hasValue) { _notify("Enter your Trakt Client ID"); return; }
+      if (cid.value) payload.client_id = cid.value;
+      if (secret.value) payload.client_secret = secret.value;
     }
 
     var connectBtn = _el("btn-connect-trakt");
     if (connectBtn) { connectBtn.disabled = true; connectBtn.classList.add("busy"); }
 
-    var win = null;
-    try { win = window.open("about:blank", "_blank"); } catch (_) {}
+    var win = openTraktPopup();
 
     var resp, data;
     try {
@@ -422,6 +441,7 @@
 
     if (win && !win.closed) {
       try {
+        win.document.open();
         win.document.write(
           '<!doctype html><meta charset="utf-8"><title>CrossWatch → Trakt</title>' +
           '<body style="margin:0;height:100vh;display:flex;align-items:center;justify-content:center;background:#0b0d12;color:#e9eefb;font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif;text-align:center">' +
@@ -429,8 +449,9 @@
           '<div style="font-size:36px;font-weight:700;letter-spacing:.22em;color:#8ff0c2">' + code + '</div>' +
           '<div style="font-size:12px;opacity:.6;margin-top:12px">Redirecting in a moment…</div></div></body>'
         );
+        win.document.close();
       } catch (_) {}
-      setTimeout(function () { try { if (win && !win.closed) win.location.href = url; } catch (_) {} }, 3000);
+      setTimeout(function () { navigateTraktPopup(win, url); }, 3000);
     } else {
       _notify("Popup blocked - open auth.trakt.tv/activate and enter the code.");
     }
