@@ -6,6 +6,7 @@ from __future__ import annotations
 import inspect
 import threading
 import time
+from concurrent.futures import Future, ThreadPoolExecutor
 from dataclasses import dataclass, field
 from typing import Any, Callable, cast
 
@@ -68,15 +69,28 @@ def _stop_groups(groups: dict[str, Any] | None) -> None:
         retry_stop = getattr(g, "retry_stop", None)
         if retry_stop is not None:
             retry_stop.set()
+        # Stop the watcher first so no new events arrive, then close the dispatcher.
         try:
             _stop_blocking(getattr(g, "watcher", None))
         except Exception:
             pass
+        try:
+            md = getattr(g, "dispatcher", None)
+            if md is not None:
+                md.close(wait=False)
+        except Exception as e:
+            _log(f"Route dispatcher close error: {e}", "ERROR")
 
 
 class MultiDispatcher:
     def __init__(self, dispatchers: list[Dispatcher]) -> None:
         self._dispatchers = list(dispatchers or [])
+        self._lock = threading.Lock()
+        self._closed = False
+        self._executor = ThreadPoolExecutor(
+            max_workers=max(1, len(self._dispatchers)),
+            thread_name_prefix="cw-route",
+        )
 
     def accepts(self, event: ScrobbleEvent) -> bool:
         accepted = False
@@ -87,14 +101,45 @@ class MultiDispatcher:
                 _log(f"Route acceptance check error: {e}", "ERROR")
         return accepted
 
+    def _run_one(self, d: Dispatcher, event: ScrobbleEvent) -> bool:
+        t0 = time.monotonic()
+        try:
+            return bool(d.dispatch(event))
+        except Exception as e:
+            _log(f"Route dispatcher error: {e}", "ERROR")
+            return False
+        finally:
+            _log(f"Route dispatch took {time.monotonic() - t0:.2f}s", "DEBUG")
+
     def dispatch(self, event: ScrobbleEvent) -> bool:
-        accepted = False
-        for d in self._dispatchers:
+        if not self._dispatchers:
+            return False
+
+        futures: list[Future[bool]] = []
+        with self._lock:
+            if self._closed:
+                return False
             try:
-                accepted = bool(d.dispatch(event)) or accepted
-            except Exception as e:
+                for d in self._dispatchers:
+                    futures.append(self._executor.submit(self._run_one, d, event))
+            except RuntimeError:
+                # Executor was shut down underneath us; deliver nothing further.
+                pass
+
+        accepted = False
+        for f in futures:
+            try:
+                accepted = bool(f.result()) or accepted
+            except Exception as e:  # includes CancelledError from close()
                 _log(f"Route dispatcher error: {e}", "ERROR")
         return accepted
+
+    def close(self, wait: bool = True) -> None:
+        with self._lock:
+            if self._closed:
+                return
+            self._closed = True
+        self._executor.shutdown(wait=wait, cancel_futures=True)
 
     def accepts_user(self, event: ScrobbleEvent) -> bool:
         if not self._dispatchers:
@@ -188,6 +233,7 @@ class WatchGroup:
     routes: list[RouteRunner]
     started_at: float
     retry_stop: threading.Event = field(default_factory=threading.Event)
+    dispatcher: MultiDispatcher | None = None
 
 
 def _retry_deliveries(group: WatchGroup) -> None:
@@ -444,6 +490,7 @@ class WatchManager:
                     watcher=watcher,
                     routes=runners,
                     started_at=time.time(),
+                    dispatcher=md,
                 )
                 threading.Thread(target=_retry_deliveries, args=(watch_groups[key],), daemon=True).start()
 
