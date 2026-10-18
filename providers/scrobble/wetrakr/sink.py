@@ -123,9 +123,8 @@ class WeTrakrSink:
         route_opts = watch_cfg.get("route_options") if isinstance(watch_cfg.get("route_options"), Mapping) else {}
         skip_start = bool(route_opts.get("wetrakr_skip_start"))
         force_pause_below = bool(route_opts.get("wetrakr_force_pause_below_threshold"))
-        # NOTE: the skip_start short-circuit lives below session bookkeeping on purpose.
-        # Skipped starts are still tracked in state["progress"] so the suspicious-completion
-        # safeguard at final stop evaluates against the real position, not a stale pause.
+        seek = bool(event.raw.get("_cw_seek"))
+        keep_stop = seek or bool(event.raw.get("_cw_preserve_stop"))
 
         try:
             item = _item(event)
@@ -133,9 +132,8 @@ class WeTrakrSink:
         except WeTrakrSyncError as exc:
             return {"ok": False, "error": exc.reason, "retryable": False}
         adapter = WETRAKRModule(config, self.instance_id)
-        watch = watch_cfg
-        source = str(watch.get("route_provider") or "watcher")
-        source_instance = str(watch.get("route_provider_instance") or "default")
+        source = str(watch_cfg.get("route_provider") or "watcher")
+        source_instance = str(watch_cfg.get("route_provider_instance") or "default")
         media = {k: v for k, v in body.items() if k not in ("progress", "app_version")}
         scope = json.dumps([account_key(adapter), source, source_instance, event.server_uuid, event.account, event.session_key])
         tokens = identity_tokens(item)
@@ -158,6 +156,7 @@ class WeTrakrSink:
                 return {"ok": False, "error": "completion_unconfirmed", "retryable": False}
             if state.get("completed"):
                 return {"ok": True, "skipped": True, "reason": "session_completed"}
+            # Skipped starts still record progress so the stop safeguard sees the real position.
             if event.action == "start" and skip_start:
                 state.update(action="start", progress=progress)
                 _log("start tracked but not sent by route option wetrakr_skip_start", "DEBUG")
@@ -165,39 +164,23 @@ class WeTrakrSink:
             action = event.action
             if action == "stop":
                 action = resolve_stop_action(progress, max(80, _setting(config, "watched_at", 90)))
-                if (force_pause_below
-                        and action == "pause"
-                        and progress >= 80
-                        and not (event.raw.get("_cw_preserve_stop") or event.raw.get("_cw_seek"))):
-                    action = "pause"
+                # WeTrakr only auto-marks watched on stop at >=80%, so keep a pause below 80%.
+                if force_pause_below and action == "pause" and progress >= 80 and not keep_stop:
                     body["progress"] = 79.0
                     _log(f"stop in [80, watched_at) forced to pause at 79% by route option (input p={progress:.1f}%)", "DEBUG")
+                # Suspicious completion: a big jump to >=98% from a low position becomes a pause there.
                 previous = state.get("progress")
-                # The safeguard below only triggers when progress >= 98 and previous < 85 with a
-                # jump >= 30, so previous is naturally <= 70 (progress is capped at 100). Therefore
-                # body["progress"] = previous never reaches >= 80 here. The defensive clamp below
-                # covers any future code path that could violate that invariant.
-                if (not event.raw.get("_cw_preserve_stop") and not event.raw.get("_cw_seek")
-                        and progress >= 98 and previous is not None and previous < _setting(config, "stop_pause_threshold", 85)
+                if (not keep_stop and progress >= 98 and previous is not None
+                        and previous < _setting(config, "stop_pause_threshold", 85)
                         and progress - previous >= 30):
                     action = "pause"
                     body["progress"] = max(0.01, previous)
-            # Defensive final clamp: any stop→pause conversion must end at < 80% when the option
-            # is on. Genuine pause events (event.action == "pause") are intentionally untouched
-            # because WeTrakr's auto-watched rule only fires on stop, not on pause.
-            if (force_pause_below
-                    and event.action == "stop"
-                    and action == "pause"
-                    and body["progress"] >= 80
-                    and not (event.raw.get("_cw_preserve_stop") or event.raw.get("_cw_seek"))):
-                body["progress"] = 79.0
-                _log("final pause progress clamped to 79% by route option", "DEBUG")
             if action == "start":
                 if progress >= _setting(config, "suppress_start_at", 99, watch=True):
                     return {"ok": True, "skipped": True, "reason": "start_suppressed"}
                 body["progress"] = max(2, progress)
                 step = max(1, min(25, _setting(config, "progress_step", 25)))
-                if (state.get("action") == "start" and not event.raw.get("_cw_seek")
+                if (state.get("action") == "start" and not seek
                         and abs(progress - state.get("progress", 0)) < step):
                     return {"ok": True, "skipped": True, "reason": "progress_step",
                             "previous_progress": state.get("progress", 0), "progress_step": step}
