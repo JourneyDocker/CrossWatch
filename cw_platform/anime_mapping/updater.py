@@ -33,7 +33,7 @@ from .storage import (
     _safe_existing_path,
 )
 
-BASE_URL = "https://github.com/anibridge/anibridge-mappings/releases/download"
+BASE_URL = "https://github.com/JourneyOver/anibridge-mappings/releases/download"
 IDENTITY_URL = "https://raw.githubusercontent.com/nattadasu/animeApi/v3/database/animeapi.tsv"
 IDENTITY_COMMITS_URL = "https://api.github.com/repos/nattadasu/animeApi/commits"
 UA = http_user_agent("AnimeMapping")
