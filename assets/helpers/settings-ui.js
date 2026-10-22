@@ -1180,7 +1180,7 @@ function cwBuildAnimeMappingPanel() {
           <dl class="am-dataset-list">
             <div>
               <dt>Episodes</dt>
-              <dd><a href="https://github.com/JourneyOver/anibridge-mappings" target="_blank" rel="noopener noreferrer">JourneyOver/anibridge-mappings<span class="material-symbols-rounded" aria-hidden="true">open_in_new</span></a><span class="am-dataset-version" id="anime_mapping_episodes_version">-</span></dd>
+              <dd><a href="https://github.com/anibridge/anibridge-mappings" target="_blank" rel="noopener noreferrer">aniBridge/anibridge-mappings<span class="material-symbols-rounded" aria-hidden="true">open_in_new</span></a><span class="am-dataset-version" id="anime_mapping_episodes_version">-</span></dd>
             </div>
             <div>
               <dt>Identity</dt>
