@@ -224,6 +224,12 @@
     return !!(found && found.capabilities && found.capabilities.resolve);
   }
 
+  function providerLinkExample(provider) {
+    const key = String(provider || "").toUpperCase();
+    const found = state.providers.find((p) => String(p.provider || "").toUpperCase() === key);
+    return String((found && found.capabilities && found.capabilities.link_example) || "Paste a list link");
+  }
+
   function configuredProviders() {
     const seen = new Set();
     return state.providers.filter((p) => {
@@ -434,6 +440,7 @@
     if (id.includes("watchlist") || raw === "watchlist") return "Watchlist";
     if (raw === "custom_list") return "Custom list";
     if (raw === "liked_list") return "Liked list";
+    if (raw === "followed_list") return "Followed list";
     if (raw === "public_list") return "Public list";
     if (raw === "collaboration") return "Shared list";
     if (raw === "status_bucket") return "Status";
@@ -1263,6 +1270,7 @@
       watchlist: ["bookmark", "Watchlist"],
       discovery: ["travel_explore", "Discovery source"],
       liked_list: ["favorite", "Liked list"],
+      followed_list: ["bookmark_added", "Followed list"],
       public_list: ["public", "Public list"],
       collaboration: ["group", "Shared list"],
       collection: ["collections_bookmark", "Collection"],
@@ -1345,6 +1353,8 @@
     if (linkBtn) {
       const linking = endpointManageMode(root) === "link";
       linkBtn.classList.toggle("hidden", !providerCanResolve(provider));
+      const linkInput = $("#pl-ep-link-ref", root);
+      if (linkInput) linkInput.placeholder = providerLinkExample(provider);
       linkBtn.disabled = creating || (managing && !linking);
       linkBtn.classList.toggle("active", linking);
       linkBtn.title = linkBtn.disabled ? "Finish or cancel the current provider playlist action first" : "Add a list from a link";
@@ -1682,7 +1692,7 @@
           <div class="pl-create-panel pl-resource-manage-panel hidden" id="pl-ep-link-panel">
             <div class="pl-field full">
               <label for="pl-ep-link-ref">List link</label>
-              <input id="pl-ep-link-ref" placeholder="https://trakt.tv/users/name/lists/list-name" autocomplete="off" aria-describedby="pl-ep-link-ref-error">
+              <input id="pl-ep-link-ref" placeholder="Paste a list link" autocomplete="off" aria-describedby="pl-ep-link-ref-error">
               <div class="pl-field-error" id="pl-ep-link-ref-error"></div>
             </div>
             <div class="pl-create-actions">
@@ -2258,7 +2268,7 @@
           </div>
           <div id="pl-wz-src-link-toggle-row" hidden><button type="button" class="pl-link" id="pl-wz-src-link-toggle">+ Use a list from a link</button></div>
           <div class="pl-wizard-row" id="pl-wz-src-link-row" hidden>
-            <div class="pl-field"><label for="pl-wz-src-link">List link</label><input id="pl-wz-src-link" placeholder="https://trakt.tv/users/name/lists/list-name" autocomplete="off" aria-describedby="pl-wz-src-link-error"><div class="pl-field-error" id="pl-wz-src-link-error"></div></div>
+            <div class="pl-field"><label for="pl-wz-src-link">List link</label><input id="pl-wz-src-link" placeholder="Paste a list link" autocomplete="off" aria-describedby="pl-wz-src-link-error"><div class="pl-field-error" id="pl-wz-src-link-error"></div></div>
             <div class="pl-field"><label for="pl-wz-src-link-add">Add it as the source</label><button type="button" class="pl-btn small primary" id="pl-wz-src-link-add">Add list</button></div>
           </div>
         </section>
@@ -2363,6 +2373,7 @@
       const canLink = !!srcAccount && providerCanResolve(srcAccount.provider);
       $("#pl-wz-src-link-toggle-row", root).hidden = !canLink;
       if (!canLink) $("#pl-wz-src-link-row", root).hidden = true;
+      if (canLink) $("#pl-wz-src-link", root).placeholder = providerLinkExample(srcAccount.provider);
       const cwWrap = $("#pl-wz-cw-wrap", root);
       if (cwWrap) cwWrap.hidden = !publishing;
       const nameInput = $("#pl-wz-new-name", root);
