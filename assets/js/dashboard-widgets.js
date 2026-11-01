@@ -1041,7 +1041,7 @@
     return labels.length > 1 ? `Route: ${labels.join(" -> ")}` : `Source: ${labels[0]}`;
   }
 
-  const actionKinds = new Set(["history", "ratings"]);
+  const actionKinds = new Set(["history", "ratings", "progress", "scrobble"]);
   const iconActions = (kind) => actionKinds.has(kind) && !!window.CW?.ItemActions?.canWrite?.();
   const iconActionAttrs = (on, provider, instance, label) => (on ? ` data-ia-ref="${esc(`${provider}:${instance}`)}" title="${esc(`${label}: add or remove`)}"` : "");
 
@@ -1078,7 +1078,7 @@
     return profile?.[1] || raw;
   }
 
-  function scrobbleSourcePill(source) {
+  function scrobbleSourcePill(source, action = false) {
     const provider = String(source?.provider || "").trim().toUpperCase();
     if (!provider) return "";
     const instance = String(source?.instance || "default").trim() || "default";
@@ -1092,7 +1092,8 @@
     const rgb = String(tone?.rgb || "124,92,255");
     const label = providerShort(provider);
     const description = `${providerName} source instance: ${profile}`;
-    return `<span class="cw-scrobble-source-pill" style="--cw-source-rgb:${esc(rgb)}" title="${esc(description)}" aria-label="${esc(description)}">${providerIcon}<span>${esc(label)}</span></span>`;
+    const ref = action ? ` data-ia-ref="${esc(`${provider}:${instance}`)}"` : "";
+    return `<span class="cw-scrobble-source-pill" style="--cw-source-rgb:${esc(rgb)}" title="${esc(action ? `${description}: add or remove` : description)}" aria-label="${esc(description)}"${ref}>${providerIcon}<span>${esc(label)}</span></span>`;
   }
 
   function scrobbleSourceRow(item) {
@@ -1118,20 +1119,20 @@
     return rows;
   }
 
-  function scrobbleRouteIcons(item) {
+  function scrobbleRouteIcons(item, action = false) {
     const rows = scrobbleRouteRows(item);
     const route = rows.length ? `Route: ${rows.map(sourceLabel).join(" -> ")}` : "No scrobble route";
     return {
-      html: ratingSourceIcons(rows, 8),
+      html: ratingSourceIcons(rows, 8, action),
       route,
     };
   }
 
-  function scrobbleSinkIcons(targets) {
+  function scrobbleSinkIcons(targets, action = false) {
     const sinkRows = sourceRows(targets, 8).filter(({ provider }) => providerMeta().get?.(provider)?.scrobblerSink === true);
     const route = sinkRows.length ? `Sinks: ${sinkRows.map(sourceLabel).join(", ")}` : "No scrobble sinks";
     return {
-      html: sourceIcons(sinkRows, 8),
+      html: sourceIcons(sinkRows, 8, action),
       route,
     };
   }
@@ -1341,13 +1342,18 @@
     const index = Number(link?.getAttribute("data-cw-widget-index") || -1);
     const item = latestItems[kind]?.[index];
     if (!actions?.canWrite?.() || !iconActions(kind) || !item) return false;
-    const feature = kind === "history" ? "history" : "ratings";
+    if (kind === "progress") {
+      void openProgressIcon(node, link, item, all);
+      return true;
+    }
+    const feature = kind === "ratings" ? "ratings" : "history";
     const [provider, ...instance] = String(node.dataset.iaRef || "").split(":");
     const present = sourceRows(item.sources, 20).map((row) => ({ provider: row.provider, instance: row.instance, ...(feature === "ratings" && item.rating != null ? { rating: item.rating } : {}) }));
+    const { key: _eventKey, ...scrobbled } = item;
     void actions.openMenu({
       anchor: node,
       feature,
-      item: { ...item, tmdb: item.tmdb },
+      item: kind === "scrobble" ? scrobbled : { ...item, tmdb: item.tmdb },
       refs: { present, missing: [] },
       fillMissing: true,
       focus: all ? null : { provider, instance: instance.join(":") || "default" },
@@ -1357,6 +1363,47 @@
       openDetails: () => openProfileWidgetPreview(kind, index) || void openDetailCard(kind, index),
     });
     return true;
+  }
+
+  async function openProgressIcon(node, link, item, all) {
+    const actions = window.CW?.ItemActions;
+    const tmdb = String(item?.tmdb || item?.ids?.tmdb || "").trim();
+    if (!actions || !tmdb) return;
+    const episode = String(item?.type || "").toLowerCase() === "episode";
+    const params = new URLSearchParams({ page: "1", page_size: episode ? "250" : "50" });
+    params.set(episode ? "show_tmdb" : "tmdb", tmdb);
+    const profile = overviewProfileId();
+    if (profile) params.set("user_profile", profile);
+    let records = [];
+    try {
+      const res = await fetch(`/api/playback_progress/items?${params}`, { credentials: "same-origin", cache: "no-store" });
+      const data = await res.json().catch(() => null);
+      records = (Array.isArray(data?.items) ? data.items : [])
+        .flatMap((entry) => (Array.isArray(entry?.records) && entry.records.length ? entry.records : [entry]))
+        .filter((record) => (episode
+          ? Number(record?.season) === Number(item.season) && Number(record?.episode) === Number(item.episode)
+          : String(record?.media_type || "").toLowerCase() === "movie" && String(record?.ids?.tmdb || "") === tmdb));
+    } catch {
+      records = [];
+    }
+    if (!node.isConnected) return;
+    const rows = records.map((record, index) => {
+      const provider = String(record?.provider || "").toUpperCase();
+      const instance = String(record?.instance_id || "default");
+      const account = instance.toLowerCase() === "default" ? "Default" : String(record?.instance_label || instance);
+      const name = `${providerLabel(provider)} · ${account}`;
+      return { rid: String(index), provider, instance, provider_label: name, label: episode && item.episode_label ? `${item.episode_label} on ${name}` : name, record };
+    });
+    const [provider, ...instance] = String(node.dataset.iaRef || "").split(":");
+    const focus = all ? null : rows.find((row) => row.provider === provider && row.instance === (instance.join(":") || "default"));
+    void actions.openMenu({
+      anchor: node,
+      feature: "progress",
+      item: { title: item.title, type: item.type },
+      progressRows: rows,
+      focusRow: focus ? focus.rid : null,
+      scope: () => [link],
+    });
   }
 
   function openProfileWidgetPreview(kind, index) {
@@ -1429,7 +1476,7 @@
     const art = poster(item);
     const artStyle = art ? ` style="--cw-history-art:url(&quot;${esc(art)}&quot;)"` : "";
     const source = scrobbleSourceRow(item);
-    const sinks = scrobbleSinkIcons(item?.targets);
+    const sinks = scrobbleSinkIcons(item?.targets, iconActions("scrobble"));
     return `
       <${tag} class="cw-history-widget-item cw-history-widget-item--stack cw-history-widget-item--activity"${hrefAttr}${artStyle}${widgetItemAttrs("scrobble", index)}>
         <span class="cw-history-thumb">
@@ -1443,7 +1490,7 @@
           <span>${esc(meta || "Activity")}</span>
         </span>
         <span class="cw-scrobble-route">
-          ${scrobbleSourcePill(source)}
+          ${scrobbleSourcePill(source, iconActions("scrobble"))}
           <span class="cw-history-sources" title="${esc(sinks.route)}" aria-label="${esc(sinks.route)}">${sinks.html}</span>
         </span>
       </${tag}>`;
@@ -1471,7 +1518,7 @@
           <strong>${esc(title)}</strong>
           <span>${esc(meta || "Progress sync")}</span>
         </span>
-        <span class="cw-history-sources" title="${esc(route)}" aria-label="${esc(route || "Sources")}">${sourceIcons(item?.sources, 3)}</span>
+        <span class="cw-history-sources" title="${esc(route)}" aria-label="${esc(route || "Sources")}">${sourceIcons(item?.sources, 3, iconActions("progress"))}</span>
       </${tag}>`;
   }
 
@@ -1517,7 +1564,7 @@
       : kind === "scrobble"
         ? [activityLabel(item), typeLabel(item), age].filter(Boolean).join(" - ")
         : [typeLabel(item), age].filter(Boolean).join(" - ");
-    const route = kind === "scrobble" ? scrobbleRouteIcons(item) : { html: sourceIcons(item?.sources, 3, iconActions(kind)), route: sourceRouteTitle(item?.sources) };
+    const route = kind === "scrobble" ? scrobbleRouteIcons(item, iconActions(kind)) : { html: sourceIcons(item?.sources, 3, iconActions(kind)), route: sourceRouteTitle(item?.sources) };
     const corner = kind === "progress" && progressLabel ? progressLabel : age;
     const episodeChip = rawType === "episode" && item?.episode_label ? String(item.episode_label) : "";
     return `
@@ -1551,7 +1598,7 @@
       : [kind === "progress" && progressLabel ? progressLabel : age].filter(Boolean);
     const art = backdropPoster(item, null, "w780") || poster(item, "w300") || coverPoster(item, "w342");
     const route = kind === "scrobble"
-      ? { html: sourceIcons(scrobbleRouteRows(item), 3), route: scrobbleRouteIcons(item).route }
+      ? { html: sourceIcons(scrobbleRouteRows(item), 3, iconActions(kind)), route: scrobbleRouteIcons(item).route }
       : { html: sourceIcons(item?.sources, 3, iconActions(kind)), route: sourceRouteTitle(item?.sources) };
     return `
       <${tag} class="cw-media-card cw-media-card--${esc(kind)}"${hrefAttr}${widgetItemAttrs(kind, index)} title="${esc([title, meta].filter(Boolean).join(" | "))}">

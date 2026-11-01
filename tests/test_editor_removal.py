@@ -555,6 +555,33 @@ def test_viewed_tracker_offers_rows_that_no_pair_has_synced_yet(setup):
     assert list(ops.live[("default", "history")]) == ["tmdb:2"]
 
 
+def test_live_check_removes_a_remote_record_added_after_the_last_sync(setup):
+    setup.ops["MDBLIST"].live[("default", "history")] = {"tmdb:1": movie(), "tmdb:2": movie(2)}
+    payload = dict(kind="history", items=[movie()])
+    assert not api.api_editor_remove_preview(payload, request=None)["providers"]
+    payload["live_check"] = [{"provider": "MDBLIST", "instance": "default"}]
+    preview = api.api_editor_remove_preview(payload, request=None)
+    assert [(p["provider"], p["count"]) for p in preview["providers"]] == [("MDBLIST", 1)]
+    result = setup.execute(payload)
+    assert result["confirmed"] == 1
+    assert list(setup.ops["MDBLIST"].live[("default", "history")]) == ["tmdb:2"]
+
+
+def test_live_check_reports_a_missing_record_instead_of_asking_for_a_sync(setup):
+    payload = dict(kind="history", items=[movie()], live_check=[{"provider": "MDBLIST", "instance": "default"}])
+    preview = api.api_editor_remove_preview(payload, request=None)
+    assert not preview["providers"]
+    assert preview["empty_reason"] == "no_matching_records"
+
+
+def test_live_check_never_matches_server_local_ids_from_another_account(setup):
+    local = dict(type="movie", title="Local", ids={"plex": "123"})
+    setup.ops["TRAKT"].live[("second", "history")] = {"plex:123": dict(local)}
+    payload = dict(kind="history", items=[local], source_provider="PLEX",
+                   live_check=[{"provider": "TRAKT", "instance": "second"}])
+    assert not api.api_editor_remove_preview(payload, request=None)["providers"]
+
+
 def test_tracker_rows_are_only_offered_when_viewing_that_tracker(setup):
     _tracker_only(setup, {"tmdb:1": movie()})
     for source in ("", "PLEX"):
@@ -704,6 +731,52 @@ def _rewatch_caps(write):
         caps["history"]["rewatches"] = {"read": True, "write": write, "account_gate": "pro_vip" if write else False}
         return caps
     return capabilities
+
+
+def test_item_targets_follow_sync_pairs_capabilities_and_media_type(setup, monkeypatch):
+    s = setup
+    monkeypatch.setattr(api, "build_provider_config_view", lambda cfg, provider, instance: dict(provider=provider, instance=instance))
+    s.cfg["pairs"].append({"id": "p3", "source": "MDBLIST", "target": "PLEX", "features": {"watchlist": {}}})
+
+    def read_only():
+        caps = {feature: {"remove": True} for feature in removal.FEATURES}
+        caps["history"].update(write=False)
+        caps["watchlist"].update(types={"movies": True, "shows": False})
+        return caps
+
+    s.ops["MDBLIST"].capabilities = read_only
+    ids = lambda rows: sorted((row["provider"], row["instance"]) for row in rows)
+    history, hidden = api.item_action_targets(s.cfg, None, "history", media_type="movie")
+    assert ids(history) == [("PLEX", "default"), ("TRAKT", "default"), ("TRAKT", "second")]
+    assert hidden == []
+    watchlist, hidden = api.item_action_targets(s.cfg, None, "watchlist", media_type="show")
+    assert ("MDBLIST", "default") not in ids(watchlist)
+    assert [(row["provider"], row["reason"]) for row in hidden] == [("MDBLIST", "type_not_supported")]
+    s.cfg["pairs"].append({"id": "p4", "source": "MDBLIST", "target": "PLEX", "features": {"history": {}}})
+    _, hidden = api.item_action_targets(s.cfg, None, "history", media_type="movie")
+    assert [(row["provider"], row["reason"]) for row in hidden] == [("MDBLIST", "read_only")]
+
+
+def test_item_targets_keep_anime_only_providers_for_anime(setup, monkeypatch):
+    s = setup
+    monkeypatch.setattr(api, "build_provider_config_view", lambda cfg, provider, instance: dict(provider=provider, instance=instance))
+    s.ops["ANILIST"] = Ops("ANILIST")
+    monkeypatch.setattr(api, "sync_provider_names", lambda **kwargs: list(s.ops))
+    s.cfg["pairs"].append({"id": "p5", "source": "ANILIST", "target": "TRAKT", "features": {"watchlist": {}}})
+    regular, hidden = api.item_action_targets(s.cfg, None, "watchlist", media_type="movie")
+    assert "ANILIST" not in {row["provider"] for row in regular}
+    assert [(row["provider"], row["reason"]) for row in hidden] == [("ANILIST", "anime_only")]
+    anime, _ = api.item_action_targets(s.cfg, None, "watchlist", media_type="movie", anime=True)
+    assert "ANILIST" in {row["provider"] for row in anime}
+
+
+def test_item_targets_use_the_profiles_own_accounts(setup, monkeypatch):
+    s = setup
+    monkeypatch.setattr(api, "build_provider_config_view", lambda cfg, provider, instance: dict(provider=provider, instance=instance))
+    import cw_platform.provider_instances as instances
+    monkeypatch.setattr(instances, "instances_for_user_profile", lambda cfg, pid: {"TRAKT": ["second"]} if pid == "P01" else {})
+    rows, _ = api.item_action_targets(s.cfg, None, "history", media_type="movie", user_profile="P01")
+    assert [(row["provider"], row["instance"]) for row in rows] == [("TRAKT", "second")]
 
 
 def test_send_targets_report_rewatch_support_for_history_only(setup, monkeypatch):
