@@ -13,16 +13,16 @@
     const d = new Date(iso);
     if (Number.isNaN(d.getTime())) return iso;
     return (
-      d.getUTCFullYear() +
+      d.getFullYear() +
       "-" +
-      pad2(d.getUTCMonth() + 1) +
+      pad2(d.getMonth() + 1) +
       "-" +
-      pad2(d.getUTCDate()) +
+      pad2(d.getDate()) +
       " " +
-      pad2(d.getUTCHours()) +
+      pad2(d.getHours()) +
       ":" +
-      pad2(d.getUTCMinutes()) +
-      " UTC"
+      pad2(d.getMinutes()) +
+      " local"
     );
   }
 
@@ -105,31 +105,35 @@
     return Math.max(0, Math.floor(num * 1000));
   }
 
-  function fillDateTimeInputs(iso, dateInput, timeInput) {
-    if (!iso) return;
-    const d = new Date(iso);
-    if (Number.isNaN(d.getTime())) return;
-    dateInput.value = `${d.getUTCFullYear()}-${pad2(d.getUTCMonth() + 1)}-${pad2(d.getUTCDate())}`;
-    timeInput.value = `${pad2(d.getUTCHours())}:${pad2(d.getUTCMinutes())}`;
+  function localInput(value) {
+    const d = new Date(value || "");
+    if (!value || Number.isNaN(d.getTime())) return "";
+    return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}T${pad2(d.getHours())}:${pad2(d.getMinutes())}:${pad2(d.getSeconds())}`;
   }
 
-  function dateTimeInputsToIso(dateValue, timeValue) {
-    if (!dateValue) return null;
-    const parts = dateValue.split("-");
-    const y = parseInt(parts[0], 10);
-    const m = parseInt(parts[1], 10);
-    const dDay = parseInt(parts[2], 10);
-    const [hhRaw, mmRaw] = (timeValue || "").split(":");
-    const hh = parseInt(hhRaw, 10) || 0;
-    const mm = parseInt(mmRaw, 10) || 0;
-    return new Date(Date.UTC(y, m - 1, dDay, hh, mm, 0)).toISOString().replace(/\.\d{3}Z$/, ".000Z");
+  function dateTimeInputToIso(value, original) {
+    if (!value) return null;
+    if (original && localInput(value) === localInput(original)) return original;
+    const date = new Date(value);
+    return Number.isNaN(date.getTime()) ? null : date.toISOString();
   }
 
-  function appendUtcHint(pop) {
+  function appendDateTimeInput(pop, value, label) {
+    const grid = document.createElement("div");
+    grid.className = "cw-datetime-grid";
+    const input = document.createElement("input");
+    input.type = "datetime-local";
+    input.step = 1;
+    input.className = "cw-input";
+    input.setAttribute("aria-label", label);
+    input.value = localInput(value);
+    grid.appendChild(input);
+    pop.appendChild(grid);
     const hint = document.createElement("div");
     hint.className = "cw-search-status";
-    hint.textContent = "Times are shown and saved in UTC.";
+    hint.textContent = "Times are shown in your local time zone and saved in UTC.";
     pop.appendChild(hint);
+    return input;
   }
 
   Editor.DateTime = {
@@ -141,9 +145,9 @@
     formatProgressPercent,
     parseProgressPercent,
     parseTimeToMs,
-    fillDateTimeInputs,
-    dateTimeInputsToIso,
-    appendUtcHint,
+    localInput,
+    dateTimeInputToIso,
+    appendDateTimeInput,
   };
   window.CrossWatchEditorDateTime = Editor.DateTime;
 })();

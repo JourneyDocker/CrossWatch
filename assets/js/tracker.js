@@ -256,7 +256,7 @@
   function localInput(value) {
     const d = new Date(value || "");
     if (!value || Number.isNaN(d.getTime())) return "";
-    return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+    return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
   }
 
   function artUrl(item, size = "w342") {
@@ -1530,7 +1530,7 @@
     const f = featureOf(sheet.feature);
     const child = isChild(item);
     const dateRow = item.date_field
-      ? `<label class="trk-field"><span>${esc(f.date)}</span><input type="datetime-local" class="cw-input" data-trk-edit="date" value="${esc(localInput(item.date))}" max="${esc(localInput(new Date().toISOString()))}"></label>`
+      ? `<label class="trk-field"><span>${esc(f.date)}</span><input type="datetime-local" step="1" class="cw-input" data-trk-edit="date" value="${esc(localInput(item.date))}" max="${esc(localInput(new Date().toISOString()))}"></label>`
       : "";
     const ratingRow = sheet.feature === "ratings"
       ? `<label class="trk-field"><span>Rating</span><select class="cw-select" data-trk-edit="rating">${Array.from({ length: 10 }, (_, i) => i + 1).map((n) => `<option value="${n}"${Number(item.rating) === n ? " selected" : ""}>${n}</option>`).join("")}</select></label>`
@@ -1688,7 +1688,7 @@
               <label class="trk-field"><span>Episode</span><select class="cw-select" data-trk-log-episode><option value="all"${log.episode === "all" ? " selected" : ""}>All ${count} episodes</option>${Array.from({ length: count }, (_, i) => i + 1).map((e) => `<option value="${e}"${String(log.episode) === String(e) ? " selected" : ""}>Episode ${e}</option>`).join("")}</select></label></div>`
           : `<p class="trk-note">Loading seasons...</p>`)
         : "";
-      const whenRow = log.target === "history" ? `<div class="trk-fields"><label class="trk-field"><span>When</span><input type="datetime-local" class="cw-input" data-trk-log-when value="${esc(log.when)}" max="${esc(localInput(new Date().toISOString()))}"></label></div>` : "";
+      const whenRow = log.target === "history" ? `<div class="trk-fields"><label class="trk-field"><span>When</span><input type="datetime-local" step="1" class="cw-input" data-trk-log-when value="${esc(log.when)}" max="${esc(localInput(new Date().toISOString()))}"></label></div>` : "";
       const unlist = log.target === "history" && log.watchlistKey ? `<label class="trk-check"><input type="checkbox" class="cw-checkbox" data-trk-log-unlist${log.unlist ? " checked" : ""}><span>Remove from watchlist</span></label>` : "";
       body = `
         <div class="trk-picked">${symbol(picked.type === "movie" ? "movie" : "tv")}<div><b>${esc(picked.title)}</b><small>${esc([picked.year, picked.type === "movie" ? "Movie" : "Show"].filter(Boolean).join(" · "))}</small></div>${log.fixed ? "" : `<button type="button" class="cw-btn" data-trk-log-repick>${icon("search")}<span>Change</span></button>`}</div>
@@ -2158,7 +2158,7 @@
     const changes = {};
     const val = (name) => form.querySelector(`[data-trk-edit="${name}"]`)?.value ?? null;
     const date = val("date");
-    if (date !== null && date !== localInput(item.date)) {
+    if (date !== null && localInput(date) !== localInput(item.date)) {
       const d = new Date(date);
       changes.date = date && !Number.isNaN(d.getTime()) ? d.toISOString() : "";
     }
@@ -2382,7 +2382,8 @@
     const log = sheet.log;
     const p = log.pick;
     if (!p) return;
-    const when = log.when ? new Date(log.when).toISOString() : new Date().toISOString();
+    const whenDate = log.when ? new Date(log.when) : new Date();
+    const when = whenDate.toISOString();
     let items;
     if (log.target === "history" && p.type === "show") {
       const season = Number(log.season);
