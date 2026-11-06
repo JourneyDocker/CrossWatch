@@ -72,6 +72,24 @@ def _items(base, feature):
     return TrackerStore(base).read_current(feature)["items"]
 
 
+def test_history_rows_include_saved_half_point_ratings(client, base):
+    store = TrackerStore(base)
+    store.write_state("ratings", {"tmdb:949": {**HEAT, "rating": 7.5, "rated_at": _at(1)}})
+    rows = client.get("/api/tracker/items", params={"feature": "history"}).json()["items"]
+    heat = next(row for row in rows if row["title"] == "Heat")
+    assert heat["user_rating"] == 7.5
+    assert heat["rating"] is None
+    assert all(row["user_rating"] is None for row in rows if row["type"] == "episode")
+
+
+def test_history_episode_rating_does_not_leak_to_other_episodes(client, base):
+    store = TrackerStore(base)
+    store.write_state("ratings", {"tmdb:95396#s01e01": {**_ep(1, 1, 1), "rating": 8.5, "rated_at": _at(1)}})
+    rows = client.get("/api/tracker/items", params={"feature": "history"}).json()["items"]
+    assert next(row for row in rows if row["key"] == "tmdb:95396#s01e01")["user_rating"] == 8.5
+    assert next(row for row in rows if row["key"] == "tmdb:95396#s01e02")["user_rating"] is None
+
+
 def test_log_a_movie_watch_and_undo_it(client, base):
     res = client.post("/api/tracker/add", json={"feature": "history", "item": {**MATRIX, "watched_at": _at(1)}})
     assert res.status_code == 200, res.text
@@ -157,6 +175,21 @@ def test_shows_view_lists_progress_per_show(client):
     assert (first["key"], first["title"], first["episodes"], first["last_season"], first["last_episode"]) == ("tmdb:95396", "Severance", 3, 1, 2)
     assert first["art"] == {"kind": "tv", "tmdb": "95396"}
     assert client.get("/api/tracker/shows", params={"q": "thrones"}).json()["shows"][0]["key"] == "tmdb:1399"
+
+
+@pytest.mark.parametrize("query", ["S01E02", "s1e2", "Severance S01E02", "s02 severance", "S02E01 Severance"])
+def test_shows_search_episode_codes_preserves_complete_summary(client, query):
+    data = client.get("/api/tracker/shows", params={"q": query}).json()
+    assert data["total"] == 1
+    show = data["shows"][0]
+    assert show["title"] == "Severance"
+    assert show["episodes"] == 3
+    assert (show["last_season"], show["last_episode"]) == (1, 2)
+
+
+@pytest.mark.parametrize("query", ["S01E03", "Thrones S02E01", "S01E020"])
+def test_shows_search_requires_a_matching_watched_episode(client, query):
+    assert client.get("/api/tracker/shows", params={"q": query}).json()["total"] == 0
 
 
 def test_show_progress_finds_the_next_episode(client):

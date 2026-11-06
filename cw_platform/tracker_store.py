@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import json
 import logging
+import re
 import shutil
 import sqlite3
 import threading
@@ -1353,9 +1354,11 @@ class TrackerStore:
             ).fetchone() is not None))
 
     def related(
-        self, *, show: bool, tmdb: str = "", imdb: str = "", title: str = "", base: str = "", limit: int | None = 5000,
+        self, *, show: bool, tmdb: str = "", imdb: str = "", title: str = "", base: str = "", limit: int | None = 5000, feature: str = "",
     ) -> list[tuple[str, str, Any]]:
         queries = self._related_queries(show=show, tmdb=tmdb, imdb=imdb, title=title, base=base)
+        if feature:
+            queries = [(f"{sql} AND feature=?", [*args, feature]) for sql, args in queries]
         with self._db() as conn:
             if conn is None:
                 return []
@@ -1415,6 +1418,20 @@ class TrackerStore:
         skip = {str(k) for k in exclude}
         needle = text.strip().lower()
         clause = "scope='' AND feature='history' AND show_key IS NOT NULL AND kind='episode'"
+        search = []
+        search_args: list[Any] = []
+        episode_match = re.search(r"(?<!\w)s(\d{1,3})(?:\s*e(\d{1,4}))?(?!\w)", needle)
+        title = needle
+        if episode_match:
+            search.append("season=?")
+            search_args.append(int(episode_match[1]))
+            if episode_match[2] is not None:
+                search.append("episode=?")
+                search_args.append(int(episode_match[2]))
+            title = " ".join((needle[:episode_match.start()] + " " + needle[episode_match.end():]).split())
+        if title:
+            search.append("instr(sort_title, ?) > 0")
+            search_args.append(title)
         with self._db() as conn:
             if conn is None:
                 return 0, []
@@ -1423,8 +1440,8 @@ class TrackerStore:
                     shows: dict[str, list[Any]] = {}
                     rows = conn.execute(
                         f"SELECT show_key, season, episode, when_at, sort_title FROM items WHERE {clause}"
-                        + (" AND instr(sort_title, ?) > 0" if needle else ""),
-                        [needle] if needle else [],
+                        + (f" AND show_key IN (SELECT show_key FROM items WHERE {clause} AND {' AND '.join(search)})" if search else ""),
+                        search_args,
                     ).fetchall()
                     for show_key, season, episode, when, _ in rows:
                         row = shows.get(show_key)

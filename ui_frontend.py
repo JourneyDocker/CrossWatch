@@ -784,6 +784,7 @@ def _get_index_html_static() -> str:
     snapshots: "Captures",
     capture_compare: "Capture Compare",
     playlists: "Playlists",
+    tracker: "Tracker",
     editor: "Editor",
     analyzer: "Analyzer",
     events: "Events",
@@ -2497,6 +2498,11 @@ def get_index_html(include_admin: bool = True, user: dict | None = None) -> str:
 
 def get_profile_html(user: dict | None = None) -> str:
     is_admin = bool(isinstance(user, dict) and user.get("is_admin"))
+    shared_header_scripts = ""
+    if is_admin:
+        shared_header_scripts += '<script src="/assets/js/assistant-settings.js?v=__CW_VERSION__" defer></script>'
+    if is_admin or _managed_tracker_allowed(user):
+        shared_header_scripts += '<script src="/assets/js/tracker-notifications.js?v=__CW_VERSION__" defer></script>'
     perms = {"dashboard": True, "watchlist": True, "playback": True, "write": True} if is_admin else _managed_user_permissions(user)
     esc = lambda value: html_lib.escape(str(value or ""), quote=True)
     role = "admin" if is_admin else "user"
@@ -2573,6 +2579,7 @@ def get_profile_html(user: dict | None = None) -> str:
             _profile_nav_tab("Main", "/"),
             _profile_nav_tab("Captures", "/#snapshots"),
             _profile_nav_tab("Playlists", "/#playlists"),
+            _profile_nav_tab("Tracker", "/#tracker"),
             _profile_nav_tab("Editor", "/#editor"),
             settings_nav,
             about_nav,
@@ -2582,6 +2589,7 @@ def get_profile_html(user: dict | None = None) -> str:
             _profile_nav_tab("Main", "/?main=1#main"),
             _profile_nav_tab("Captures", "/?main=1#snapshots"),
             _profile_nav_tab("Playlists", "/?main=1#playlists"),
+            *([_profile_nav_tab("Tracker", "/?main=1#tracker")] if _managed_tracker_allowed(user) else []),
             _profile_nav_tab("Editor", "/?main=1#editor"),
         ])
     else:
@@ -2675,6 +2683,7 @@ def get_profile_html(user: dict | None = None) -> str:
 <link rel="stylesheet" href="/assets/css/account-menu.css?v=__CW_VERSION__">
 <link id="cw-notifications-css" rel="stylesheet" href="/assets/css/notifications.css?v=__CW_VERSION__">
 <link rel="stylesheet" href="/assets/css/profile-page.css?v=__CW_VERSION__">
+<link rel="stylesheet" href="/assets/css/ai-settings.css?v=__CW_VERSION__">
 <link rel="preload" href="/assets/fonts/material-symbols-rounded-full-v355.woff2" as="font" type="font/woff2" crossorigin>
 <link rel="stylesheet" href="/assets/fonts/material-symbols-rounded.css?v=__CW_VERSION__">
 <link rel="stylesheet" href="/assets/js/modals/core/styles.css?v=__CW_VERSION__">
@@ -3103,6 +3112,7 @@ def get_profile_html(user: dict | None = None) -> str:
 <script src="/assets/js/overview-profile.js?v=__CW_VERSION__" defer></script>
 <script src="/assets/js/sync-reviews.js?v=__CW_VERSION__" defer></script>
 <script src="/assets/js/plex-recovery-notifications.js?v=__CW_VERSION__" defer></script>
+{shared_header_scripts}
 <script src="/assets/helpers/api.js?v=__CW_VERSION__" defer></script>
 <script src="/assets/helpers/media-meta.js?v=__CW_VERSION__" defer></script>
 <script src="/assets/helpers/trailer.js?v=__CW_VERSION__" defer></script>

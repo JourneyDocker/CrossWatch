@@ -10,9 +10,36 @@
     return dt;
   };
 
+  function createDateTimeEditor(row, ctx = {}) {
+    const dt = DT();
+    const field = ctx.state.kind === "history" ? "watched_at" : "collected_at";
+    const input = document.createElement("input");
+    input.type = "datetime-local";
+    input.step = 1;
+    input.className = "cw-input cw-timestamp-input";
+    input.value = dt.localInput(row.raw && row.raw[field]);
+    input.title = "Local time; saved in UTC";
+    input.onclick = () => {
+      try { input.showPicker?.(); } catch {}
+    };
+    input.onchange = () => {
+      if (!input.checkValidity()) return;
+      const value = dt.dateTimeInputToIso(input.value, row.raw && row.raw[field]);
+      if (value === (row.raw[field] || null)) return;
+      row.raw[field] = value;
+      ctx.finishExtraChange(row, input, () => {});
+    };
+    return input;
+  }
+
   function updateExtraDisplay(row, el, ctx = {}) {
     const state = ctx.state || {};
     const dt = DT();
+    if (el.type === "datetime-local") {
+      const field = state.kind === "history" ? "watched_at" : "collected_at";
+      el.value = dt.localInput(row.raw && row.raw[field]);
+      return;
+    }
     let label = "";
     let placeholder = "";
     let icon = "";
@@ -189,7 +216,7 @@
       grid.className = "cw-rating-grid";
       const current = row.raw && row.raw.rating != null ? Number(row.raw.rating) : null;
 
-      for (let i = 1; i <= 10; i += 1) {
+      for (let i = 0.5; i <= 10; i += 0.5) {
         const pill = document.createElement("button");
         pill.type = "button";
         pill.className = "cw-rating-pill" + (current === i ? " active" : "");
@@ -226,6 +253,7 @@
   }
 
   Editor.ExtraEditors = {
+    createDateTimeEditor,
     updateExtraDisplay,
     openHistoryEditor,
     openCollectionEditor,

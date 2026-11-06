@@ -171,6 +171,7 @@
       syncSelectPageCheckbox: ctx.syncSelectPageCheckbox,
       updateTypeDisplay: ctx.updateTypeDisplay,
       updateExtraDisplay: ctx.updateExtraDisplay,
+      createDateTimeEditor: ctx.createDateTimeEditor,
       formatEpisodeVisualTitle: ctx.formatEpisodeVisualTitle,
       formatSxxEyy: ctx.formatSxxEyy,
       openTypeEditor: ctx.openTypeEditor,

@@ -122,6 +122,7 @@
     effects: {},
     stats: null,
     view: "history",
+    layouts: {},
     cleanFeature: "history",
     media: "",
     byDay: false,
@@ -183,6 +184,8 @@
       if (VIEWS.some((v) => v.id === saved.view)) state.view = saved.view;
       if (MEDIA.some((m) => m.id === saved.media)) state.media = saved.media;
       if (PAGE_SIZES.includes(saved.pageSize)) state.pageSize = saved.pageSize;
+      state.layouts = Object.fromEntries(VIEWS.map(({ id }) => [id, saved.layouts?.[id] === "grid" ? "grid" : "list"]));
+      if (!saved.layouts && saved.layout === "grid") state.layouts[state.view] = "grid";
       state.byDay = saved.byDay === true;
       state.hideDropped = saved.hideDropped === true;
       if (Number.isInteger(saved.zoom)) state.zoom = saved.zoom;
@@ -192,7 +195,7 @@
 
   function saveView() {
     try {
-      localStorage.setItem(STORE_KEY, JSON.stringify({ view: state.view, media: state.media, byDay: state.byDay, hideDropped: state.hideDropped, zoom: state.zoom, pageSize: state.pageSize, instance: state.instance }));
+      localStorage.setItem(STORE_KEY, JSON.stringify({ view: state.view, layouts: state.layouts, media: state.media, byDay: state.byDay, hideDropped: state.hideDropped, zoom: state.zoom, pageSize: state.pageSize, instance: state.instance }));
     } catch {}
   }
 
@@ -457,7 +460,6 @@
       return `<div class="trk-seg" role="group" aria-label="Status">${statuses}</div>${tagSelect}`;
     }
     let out = `<div class="trk-seg" role="group" aria-label="Type">${MEDIA.map((m) => chip(`data-trk-media="${m.id}"`, m.label, { active: state.media === m.id, iconName: m.icon })).join("")}</div>`;
-    if (state.view === "history") out += chip('data-trk-action="by-day"', "By day", { active: state.byDay, iconName: "calendar_view_day", title: "Group plays by day and show the timeline" });
     if (timelineOn() && state.month) {
       out += `<button type="button" class="cw-filter-chip active" data-trk-action="month-clear" title="Back to the latest plays">${symbol("event", "cw-type-icon")}<span>${esc(monthName(state.month))} and older</span>${symbol("close", "cw-type-icon")}</button>`;
     }
@@ -465,7 +467,7 @@
   }
 
   function renderControls() {
-    const placeholder = state.view === "shows" ? "Filter shows..." : state.view === "titles" ? "Filter my titles..." : "Filter by title...";
+    const placeholder = state.view === "shows" ? "Filter shows / S01 / S01E02..." : state.view === "titles" ? "Filter my titles..." : "Filter by title...";
     const picked = state.picked.size;
     const middle = picked
       ? `<div class="cw-bulk trk-bulk" role="group" aria-label="Selection">
@@ -480,6 +482,8 @@
         <input class="cw-input trk-search" data-trk-input="q" value="${esc(state.q)}" placeholder="${esc(placeholder)}" aria-label="${esc(placeholder)}">
         ${middle}
         <div class="trk-actions">
+          ${state.view === "history" ? `<button type="button" class="cw-filter-chip trk-icon-btn${state.byDay ? " active" : ""}" data-trk-action="by-day" aria-pressed="${state.byDay}" aria-label="Group by day" title="By day">${symbol("calendar_view_day", "cw-type-icon")}</button>` : ""}
+          <div class="cw-type-filter trk-layout" role="group" aria-label="Display layout">${[['list', 'view_list', 'List'], ['grid', 'grid_view', 'Grid']].map(([value, glyph, label]) => `<button type="button" class="cw-filter-chip trk-icon-btn${(state.layouts[state.view] || "list") === value ? " active" : ""}" data-trk-layout="${value}" aria-pressed="${(state.layouts[state.view] || "list") === value}" aria-label="${label} view" title="${label} view">${symbol(glyph, "cw-type-icon")}</button>`).join("")}</div>
           <button type="button" class="cw-btn cw-icon-only trk-icon-btn" data-trk-action="changes" title="Changes: everything you logged, edited or deleted" aria-label="Changes">${icon("manage_history")}</button>
           <button type="button" class="cw-btn cw-icon-only trk-icon-btn" data-trk-action="import" title="Import from a connected service" aria-label="Import">${icon("download")}</button>
           <button type="button" class="cw-btn primary trk-log-btn" data-trk-action="log" aria-label="Log a watch">${icon("add_circle")}<span>Log a watch</span></button>
@@ -615,15 +619,16 @@
     if (!state.shows.length) return emptyState(state.loading ? "Loading shows..." : state.q ? "No shows match this filter." : "No episodes in your history yet.", state.loading ? "hourglass_empty" : "tv");
     const body = state.shows.map((show) => {
       const selected = state.ref?.show === show.key;
-      const last = show.last_season != null ? `last ${se(show.last_season, show.last_episode)}` : "";
+      const last = show.last_season != null ? se(show.last_season, show.last_episode) : "";
       return `<tr class="trk-play${selected ? " is-selected" : ""}" data-trk-ref-show="${esc(show.key)}" tabindex="0" aria-selected="${selected}">
-          <td class="cw-col-title"><div class="cw-title-cell"><div class="cw-title-row"><strong class="cw-merged-title">${esc(show.title || show.key)}</strong>${statusPill(show.status)}</div><span class="trk-sub">${esc([show.year, last].filter(Boolean).join(" · "))}</span></div></td>
+          <td class="cw-col-title"><div class="cw-title-cell"><div class="cw-title-row"><strong class="cw-merged-title">${esc(show.title || show.key)}</strong>${statusPill(show.status)}</div>${show.year ? `<span class="trk-sub">${esc(show.year)}</span>` : ""}</div></td>
           <td class="trk-col-progress">${progressCell(show)}</td>
           <td class="trk-col-next">${nextCell(show)}</td>
+          <td class="trk-col-last-episode">${esc(last)}</td>
           <td class="trk-col-date">${esc(agoText(show.last_watched))}</td>
         </tr>`;
     }).join("");
-    return tableWrap(`${th("Show", "cw-col-title")}${th("Progress", "trk-col-progress")}${th("Next up", "trk-col-next")}${th("Last watched", "trk-col-date")}`, body, "trk-shows", ["title", "progress", "next", "date"]) + pager();
+    return tableWrap(`${th("Show", "cw-col-title")}${th("Progress", "trk-col-progress")}${th("Next up", "trk-col-next")}${th("Last episode", "trk-col-last-episode")}${th("Last watched", "trk-col-date")}`, body, "trk-shows", ["title", "progress", "next", "last-episode", "date"]) + pager();
   }
 
   function renderTitles() {
@@ -648,18 +653,57 @@
   }
 
   function extraColumn(feature) {
-    if (feature === "ratings") return "Rating";
+    if (feature !== "progress") return "Rating";
     if (feature === "progress") return "Progress";
     return "";
   }
 
   function extraCell(item, feature) {
-    if (feature === "ratings") return item.rating != null ? `<span class="trk-rating">${symbol("star")}${esc(item.rating)}</span>` : "";
+    if (feature !== "progress") {
+      const rating = feature === "ratings" ? item.rating : item.user_rating;
+      return rating != null ? `<span class="trk-rating" aria-label="Your rating: ${esc(rating)} out of 10">${symbol("star")}${esc(rating)}</span>` : "";
+    }
     if (feature === "progress") {
       const pct = typeof item.progress_percent === "number" ? Math.max(0, Math.min(100, item.progress_percent)) : null;
       return pct != null ? `<span class="trk-progress"><i style="width:${pct}%"></i></span><span class="trk-progress-text">${esc(Math.round(pct))}%</span>` : "";
     }
     return "";
+  }
+
+  function renderGrid() {
+    const shows = state.view === "shows", notes = state.view === "titles";
+    const rows = shows ? state.shows : notes ? state.noteRows : state.items;
+    if (!rows.length) return shows ? renderShows() : notes ? renderTitles() : renderList();
+    const feature = listFeature();
+    let previousDay = "";
+    const cards = rows.map((item, index) => {
+      const refName = shows ? "show" : notes ? "note" : "key";
+      const selected = state.ref?.[refName] === item.key && (shows || notes || state.ref?.feature === feature);
+      const title = shows || notes ? item.title || item.key : cardTitle(item);
+      const art = item.art || (item.ids?.tmdb ? {kind: item.type === "movie" ? "movie" : "tv", tmdb: item.ids.tmdb} : null);
+      const url = artUrl({...item, art}, "w500");
+      const image = url ? `${url}&kind=${isChild(item) && item.season != null && item.episode != null ? `still&season=${encodeURIComponent(item.season)}&episode=${encodeURIComponent(item.episode)}` : "backdrop"}` : "";
+      const rating = feature === "ratings" && !shows && !notes ? item.rating : item.user_rating;
+      const date = shows ? item.last_watched : notes ? item.updated : item.date;
+      const episode = shows ? item.last_season != null ? `Last ${se(item.last_season, item.last_episode)}` : "" : episodeCode(item);
+      const meta = [isChild(item) ? item.series_year : item.year, shows ? "Show" : typeMeta(item).label, episode].filter(Boolean).join(" · ");
+      let heading = "";
+      if (timelineOn()) {
+        const day = dayLabel(date);
+        if (day !== previousDay) { heading = `<h3 class="trk-grid-day">${esc(day)}</h3>`; previousDay = day; }
+      }
+      return `${heading}<article class="trk-play trk-grid-card${selected ? " is-selected" : ""}" data-trk-ref-${refName}="${esc(item.key)}" tabindex="0" aria-label="${esc(title)}" aria-selected="${selected}">
+        <div class="trk-grid-art"><span class="trk-grid-placeholder" aria-hidden="true">${symbol(shows ? "tv" : typeMeta(item).icon)}</span>${image ? `<img src="${esc(image)}" alt="" loading="lazy" decoding="async">` : ""}
+          ${!shows && !notes ? `<input type="checkbox" class="cw-checkbox trk-grid-pick" data-trk-pick="${index}"${state.picked.has(item.key) ? " checked" : ""} aria-label="Select ${esc(title)}">` : ""}
+          ${rating != null ? `<span class="cw-media-card-score" aria-label="Your rating: ${esc(rating)} out of 10"><span>${esc(rating)}</span></span>` : ""}
+          ${date ? `<span class="trk-grid-date">${esc(timelineOn() ? timeText(date) : whenText(date))}</span>` : ""}
+        </div>
+        <div class="trk-grid-copy"><strong>${esc(title)}</strong><small>${esc(meta)}</small>${shows ? `<div class="trk-grid-progress">${progressCell(item)}${nextCell(item)}</div>` : notes ? `${statusPill(item.status)}${tagChips(item.tags, 3)}` : feature === "progress" ? extraCell(item, feature) : ""}
+          ${!shows && !notes ? `<div class="trk-grid-tools">${healthIcon(item, state.view === "cleanup")}<button type="button" class="trk-icon" data-trk-row-edit="${index}" title="Edit" aria-label="Edit ${esc(title)}">${icon("edit")}</button></div>` : ""}
+        </div></article>`;
+    }).join("");
+    const more = timelineOn() ? state.items.length < state.total ? `<div class="cw-pager"><button type="button" class="cw-btn" data-trk-action="more"${state.loading ? " disabled" : ""}>Show older plays</button></div>` : "" : pager();
+    return `<div class="trk-cover-grid">${cards}</div>${more}`;
   }
 
   function renderList() {
@@ -681,15 +725,15 @@
           <td class="cw-col-title"><div class="cw-title-cell"><div class="cw-title-row"><strong class="cw-merged-title">${esc(cardTitle(item))}</strong>${ep ? `<span class="trk-ep">${esc(ep)}</span>` : ""}</div></div></td>
           <td class="cw-col-year"><span class="cw-merged-year">${esc(year || "")}</span></td>
           ${f.date ? `<td class="trk-col-date">${esc(feature === "history" ? whenText(item.date) : dateText(item.date))}</td>` : ""}
-          ${extraColumn(feature) ? `<td class="trk-col-extra">${extraCell(item, feature)}</td>` : ""}
+          ${extraColumn(feature) ? `<td class="trk-col-extra${feature !== "progress" ? " trk-col-rating" : ""}">${extraCell(item, feature)}</td>` : ""}
           <td class="trk-col-health"><span class="trk-row-tools"><button type="button" class="trk-icon trk-row-edit" data-trk-row-edit="${index}" title="Edit" aria-label="Edit ${esc(cardTitle(item))}">${icon("edit")}</button>${healthIcon(item, clean)}</span></td>
         </tr>`;
     }).join("");
     const head = `<th class="trk-col-pick"><input type="checkbox" class="cw-checkbox" data-trk-pick="page"${allPicked ? " checked" : ""} aria-label="Select this page"></th>`
       + th("Type", "cw-col-type") + th("Title", "cw-col-title") + th("Year", "cw-col-year")
-      + (f.date ? th(f.date, "trk-col-date") : "") + (extraColumn(feature) ? th(extraColumn(feature), "trk-col-extra") : "")
+      + (f.date ? th(f.date, "trk-col-date") : "") + (extraColumn(feature) ? th(extraColumn(feature), feature === "progress" ? "trk-col-extra" : "trk-col-extra trk-col-rating") : "")
       + th(clean ? "TMDB" : "", "trk-col-health");
-    const cols = ["pick", "type", "title", "year", ...(f.date ? ["date"] : []), ...(extraColumn(feature) ? ["extra"] : []), "health"];
+    const cols = ["pick", "type", "title", "year", ...(f.date ? ["date"] : []), ...(extraColumn(feature) ? [feature === "progress" ? "extra" : "rating"] : []), "health"];
     return tableWrap(head, body, "trk-list", cols) + pager();
   }
 
@@ -748,6 +792,7 @@
       return `<div class="cw-empty" role="status">${icon("database")}<div class="cw-empty-text">${esc(state.error)}</div>${total ? `<div class="trk-meter" aria-hidden="true"><i style="width:${pct}%"></i></div><div class="cw-status-text">${esc(num(move.files_done))} of ${esc(num(total))} files</div>` : ""}</div>`;
     }
     if (state.error) return emptyState(state.error, "error");
+    if (state.layouts[state.view] === "grid") return renderGrid();
     if (timelineOn()) return renderTimeline();
     if (state.view === "shows") return renderShows();
     if (state.view === "titles") return renderTitles();
@@ -760,7 +805,24 @@
     return `<div class="ins-row"><div class="ins-kv"><label for="trk-instance">Tracker</label><select id="trk-instance" class="cw-select" data-trk-input="instance">${instances}</select></div></div>`;
   }
 
+  function updateHeroBackdrop() {
+    const image = state.root?.querySelector(".trk-hero-backdrop");
+    if (!image) return;
+    const item = state.ref ? state.title?.title : null;
+    const art = item?.art;
+    const kind = art?.kind === "movie" ? "movie" : "tv";
+    const url = art?.tmdb ? `/art/tmdb/${kind}/${encodeURIComponent(art.tmdb)}?fallback=2&kind=backdrop&size=w1280` : "";
+    if (image.dataset.url === url) return;
+    image.dataset.url = url;
+    image.hidden = true;
+    image.onload = () => { image.hidden = image.dataset.url !== url || !url; };
+    image.onerror = () => { image.hidden = true; };
+    if (url) image.src = url;
+    else image.removeAttribute("src");
+  }
+
   function renderTitle() {
+    updateHeroBackdrop();
     if (!state.ref) {
       return `<div class="ins-row"><div class="ins-icon">${symbol("info")}</div><div class="ins-title">Title</div></div>
         <div class="trk-detail-empty">${symbol("touch_app")}<span>Pick a row to see the cover, every play, your rating and what to watch next.</span></div>`;
@@ -940,6 +1002,48 @@
     return `<div class="trk-section"><div class="trk-section-title">In your lists</div><ul class="trk-play-list trk-record-list">${items}${more}</ul></div>`;
   }
 
+  const episodePreviewSeasons = new Map();
+
+  async function loadEpisodePreview(tmdb, season) {
+    const key = `${tmdb}:${season}`;
+    if (episodePreviewSeasons.has(key)) return;
+    episodePreviewSeasons.set(key, null);
+    try {
+      const data = await getJSON(`/api/metadata/tmdb/season?tmdb=${encodeURIComponent(tmdb)}&season=${encodeURIComponent(season)}`);
+      episodePreviewSeasons.set(key, data.episodes || []);
+    } catch {
+      episodePreviewSeasons.set(key, []);
+    }
+    if (String(state.title?.title?.art?.tmdb) === String(tmdb)) {
+      setSlot("title", renderTitle());
+      if (sheet.mode === "title") renderSheet();
+    }
+  }
+
+  function episodePreviews(data) {
+    const tmdb = data.title?.art?.tmdb;
+    const progress = state.progress[tmdb];
+    if (!data.show || !tmdb || !progress?.available) return "";
+    const first = progress.next || progress.next_air;
+    if (!first) return "";
+    const seasons = [...(progress.seasons || [])].sort((a, b) => a.season - b.season);
+    const index = seasons.findIndex(row => Number(row.season) === Number(first.season));
+    const second = index < 0 ? null : Number(first.episode) < Number(seasons[index].episodes)
+      ? {season: first.season, episode: Number(first.episode) + 1}
+      : seasons[index + 1] ? {season: seasons[index + 1].season, episode: 1} : null;
+    const cards = [first, second].filter(Boolean).map((pos, i) => {
+      const key = `${tmdb}:${pos.season}`;
+      if (!episodePreviewSeasons.has(key)) void loadEpisodePreview(tmdb, pos.season);
+      const ep = episodePreviewSeasons.get(key)?.find(row => Number(row.episode) === Number(pos.episode));
+      if (!ep) return "";
+      const future = ep.air_date && ep.air_date > new Date().toISOString().slice(0, 10);
+      const label = i ? "Next episode" : future ? "Upcoming episode" : progress.watched ? "Continue watching" : "Start watching";
+      const art = `/art/tmdb/tv/${encodeURIComponent(tmdb)}?fallback=2&kind=still&season=${encodeURIComponent(pos.season)}&episode=${encodeURIComponent(pos.episode)}&size=w300`;
+      return `<article class="trk-episode-preview"><strong class="trk-episode-heading">${label}</strong><img class="trk-episode-backdrop" src="${esc(art)}" alt="" loading="lazy" decoding="async"><div class="trk-episode-copy"><strong>${esc(se(pos.season, pos.episode))}${ep.name ? ` · ${esc(ep.name)}` : ""}</strong><small>${esc([ep.air_date ? `${future ? "Airs " : ""}${dayText(ep.air_date)}` : "", ep.runtime ? `${ep.runtime} min` : ""].filter(Boolean).join(" · "))}</small>${ep.overview ? `<p>${esc(ep.overview)}</p>` : ""}</div></article>`;
+    }).join("");
+    return cards ? `<div class="trk-episode-previews">${cards}</div>` : "";
+  }
+
   function titleBody(data) {
     const head = data.title || {};
     const url = artUrl(head);
@@ -962,9 +1066,9 @@
     const watchedLine = data.plays.length ? `${plural(data.plays.length, data.show ? "episode play" : "play", data.show ? "episode plays" : "plays")} · last ${agoText(data.plays[0].date)}` : "Not watched yet";
     return `
       <div class="trk-detail-top">
-        ${card ? `<button type="button" class="trk-poster is-link${url ? "" : " is-empty"}" data-trk-detail="card" title="Open details" aria-label="Open details for ${esc(head.title || "")}">` : `<div class="trk-poster${url ? "" : " is-empty"}">`}${url ? `<img src="${esc(url)}" alt="" loading="lazy" decoding="async">` : ""}<span class="trk-poster-fallback">${symbol(t.icon)}</span>${card ? "</button>" : "</div>"}
+        ${card ? `<button type="button" class="trk-poster is-link${url ? "" : " is-empty"}" data-trk-detail="card" title="Open details" aria-label="Open details for ${esc(head.title || "")}">` : `<div class="trk-poster${url ? "" : " is-empty"}">`}${url ? `<img src="${esc(url)}" alt="" loading="lazy" decoding="async">` : ""}<span class="trk-poster-fallback">${symbol(t.icon)}</span>${rating != null ? `<span class="cw-rating-score trk-cover-rating" aria-label="Your rating: ${esc(rating)} out of 10"><span>${esc(rating)}</span></span>` : ""}${card ? "</button>" : "</div>"}
         <div class="trk-detail-copy">
-          <span class="trk-detail-kind">${symbol(t.icon)}${esc(t.label)}</span>
+          <div class="trk-detail-meta"><span class="trk-detail-kind">${symbol(t.icon)}${esc(t.label)}</span>${statusPill(data.note?.status)}</div>
           <span class="trk-detail-head"><strong class="trk-detail-title">${esc(head.title || "")}</strong>${recordCount(data) ? `<button type="button" class="trk-icon trk-title-edit" data-trk-detail="edit-title" title="Edit title, year and IDs on every record" aria-label="Edit title, year and IDs">${icon("edit")}</button>` : ""}</span>
           ${head.year ? `<span class="trk-detail-sub">${esc(head.year)}</span>` : ""}
           <span class="trk-detail-sub">${esc(watchedLine)}</span>
@@ -973,12 +1077,13 @@
       </div>
       ${attention}
       <div class="trk-detail-actions">
-        <button type="button" class="cw-btn primary" data-trk-detail="log">${icon("add_circle")}<span>${data.show ? "Log episode" : data.plays.length ? "Log rewatch" : "Mark watched"}</span></button>
+        <button type="button" class="cw-btn primary" data-trk-detail="log" title="Choose a watch date and add a play to this tracker">${icon("add_circle")}<span>${data.show ? "Log episode" : data.plays.length ? "Log rewatch" : "Mark watched"}</span></button>
         <button type="button" class="cw-btn" data-trk-detail="rate" title="${rating != null ? "Change rating" : "Rate"}" aria-label="${rating != null ? "Change rating" : "Rate"}">${icon(rating != null ? "star" : "star_outline")}</button>
         <button type="button" class="cw-btn" data-trk-detail="list" title="${listed ? "Remove from watchlist" : "Add to watchlist"}" aria-label="${listed ? "Remove from watchlist" : "Add to watchlist"}">${icon(listed ? "bookmark_remove" : "bookmark_add")}</button>
-        ${info ? "" : `<button type="button" class="cw-btn" data-trk-detail="map" title="Fix match" aria-label="Fix match">${icon("compare_arrows")}</button>`}
+        ${info ? "" : `<button type="button" class="cw-btn" data-trk-detail="map" title="Choose the correct movie or show for this tracker entry" aria-label="Fix match">${icon("compare_arrows")}</button>`}
         ${card ? `<button type="button" class="cw-btn" data-trk-detail="card" title="Open details" aria-label="Open details">${icon("info")}</button>` : ""}
       </div>
+      ${episodePreviews(data)}
       ${noteBlock(data)}
       ${data.show ? seasonBlock(data) : ""}
       ${plays ? `<div class="trk-section"><div class="trk-section-title">${esc(data.show ? "Recent plays" : "Plays")}</div><ul class="trk-play-list">${plays}${morePlays}</ul></div>` : ""}
@@ -1014,6 +1119,7 @@
       root.innerHTML = `
         <div class="cw-root">
           <div class="cw-topline cw-page-hero cw-page-hero-tracker" data-hero-icon="inventory_2">
+            <img class="trk-hero-backdrop" alt="" aria-hidden="true" hidden>
             <div class="cw-head-copy cw-page-hero-copy">
               <div class="cw-page-hero-kicker">CW TRACKER</div>
               <div class="cw-title-row"><div>
@@ -1284,7 +1390,7 @@
     state.statusMenu = false;
     state.title = null;
     state.seasonOpen.clear();
-    state.root.querySelectorAll("tr.trk-play").forEach((tr) => {
+    state.root.querySelectorAll(".trk-play").forEach((tr) => {
       const on = ref.note ? tr.dataset.trkRefNote === ref.note : ref.show ? tr.dataset.trkRefShow === ref.show : tr.dataset.trkRefKey === ref.key;
       tr.classList.toggle("is-selected", on);
       tr.setAttribute("aria-selected", String(on));
@@ -1530,10 +1636,10 @@
     const f = featureOf(sheet.feature);
     const child = isChild(item);
     const dateRow = item.date_field
-      ? `<label class="trk-field"><span>${esc(f.date)}</span><input type="datetime-local" step="1" class="cw-input" data-trk-edit="date" value="${esc(localInput(item.date))}" max="${esc(localInput(new Date().toISOString()))}"></label>`
+      ? `<label class="trk-field"><span>${esc(f.date)}</span><input type="datetime-local" step="1" class="cw-input cw-timestamp-input" data-trk-edit="date" value="${esc(localInput(item.date))}" max="${esc(localInput(new Date().toISOString()))}"></label>`
       : "";
     const ratingRow = sheet.feature === "ratings"
-      ? `<label class="trk-field"><span>Rating</span><select class="cw-select" data-trk-edit="rating">${Array.from({ length: 10 }, (_, i) => i + 1).map((n) => `<option value="${n}"${Number(item.rating) === n ? " selected" : ""}>${n}</option>`).join("")}</select></label>`
+      ? `<label class="trk-field"><span>Rating</span><select class="cw-select" data-trk-edit="rating">${Array.from({ length: 20 }, (_, i) => (i + 1) / 2).map((n) => `<option value="${n}"${Number(item.rating) === n ? " selected" : ""}>${n}</option>`).join("")}</select></label>`
       : "";
     const progressRow = sheet.feature === "progress"
       ? `<label class="trk-field"><span>Progress %</span><input type="number" class="cw-input" data-trk-edit="progress_percent" min="0" max="100" step="1" value="${esc(item.progress_percent != null ? Math.round(item.progress_percent) : "")}"></label>`
@@ -1639,14 +1745,90 @@
       </div>`;
   }
 
+  function ratingLabel(value) {
+    const labels = [
+      "Unwatchable", "Absolute trash", "Garbage", "Painful", "Refund my time",
+      "A rough watch", "Mostly regret", "Background noise", "Meh", "Aggressively average",
+      "Not bad, I guess", "Pretty decent", "Worth the popcorn", "Good stuff", "Now we're talking",
+      "Seriously good", "Absolutely hooked", "Cinema magic", "Almost too good", "Absolute masterpiece"
+    ];
+    return labels[Number(value) * 2 - 1] || "Your rating";
+  }
+
+  function wireRatingPreview(dialog) {
+    const group = dialog.querySelector(".trk-rates");
+    if (!group) return;
+    const buttons = Array.from(group.querySelectorAll("[data-trk-rate]"));
+    const current = state.title?.ratings?.[0]?.rating ?? null;
+    const preview = value => {
+      buttons.forEach(button => button.classList.toggle("is-lit", Number(button.dataset.trkRate) <= value));
+      dialog.querySelector("[data-trk-rate-value]").textContent = value ? `${value}/10` : "Not rated";
+      dialog.querySelector("[data-trk-rate-label]").textContent = ratingLabel(value);
+    };
+    group.addEventListener("pointerover", event => {
+      const button = event.target.closest("[data-trk-rate]");
+      if (button && !button.disabled) preview(Number(button.dataset.trkRate));
+    });
+    group.addEventListener("pointerleave", () => preview(current));
+    group.addEventListener("focusin", event => {
+      const button = event.target.closest("[data-trk-rate]");
+      if (button) preview(Number(button.dataset.trkRate));
+    });
+    group.addEventListener("focusout", event => { if (!group.contains(event.relatedTarget)) preview(current); });
+    group.addEventListener("keydown", event => {
+      const index = buttons.indexOf(event.target.closest("[data-trk-rate]"));
+      if (index < 0) return;
+      const next = event.key === "ArrowRight" || event.key === "ArrowUp" ? Math.min(buttons.length - 1, index + 1)
+        : event.key === "ArrowLeft" || event.key === "ArrowDown" ? Math.max(0, index - 1)
+        : event.key === "Home" ? 0 : event.key === "End" ? buttons.length - 1 : null;
+      if (next === null) return;
+      event.preventDefault();
+      buttons[next].focus();
+    });
+  }
+
+  async function loadCommunityRating(token) {
+    const head = state.title?.title || {};
+    let text = "TMDB community rating unavailable";
+    let rating = null;
+    try {
+      const ids = { ...head.ids };
+      if (head.art?.tmdb) ids.tmdb = head.art.tmdb;
+      if (Object.keys(ids).length) {
+        const data = await getJSON("/api/metadata/resolve", { entity: state.title?.show ? "show" : "movie", ids });
+        const meta = data.result || {};
+        const votes = Number(meta.vote_count);
+        const score = Number(meta.detail?.vote_average ?? Number(meta.score) / 10);
+        if (Number.isFinite(score) && score >= 0 && score <= 10 && votes > 0) {
+          text = `TMDB community: ${score.toFixed(1)}/10 from ${num(votes)} votes`;
+          rating = { score, votes };
+        }
+        else if (votes === 0) text = "No TMDB community votes yet";
+      }
+    } catch {}
+    if (sheet.mode !== "rate" || sheet.token !== token) return;
+    sheet.communityRating = text;
+    sheet.communityScore = rating;
+    const node = sheet.el?.querySelector("[data-trk-community]");
+    if (node) node.innerHTML = communityRatingHtml();
+  }
+
+  function communityRatingHtml() {
+    const rating = sheet.communityScore;
+    if (!rating) return `<span class="trk-note">${esc(sheet.communityRating || "Loading TMDB community rating...")}</span>`;
+    return `<div class="trk-community-ring" style="--rating-progress:${rating.score * 10}%" aria-hidden="true"><span><strong>${rating.score.toFixed(1)}</strong><small>/ 10</small></span></div><div class="trk-community-copy"><strong>TMDB community</strong><span class="trk-note">${esc(num(rating.votes))} votes</span><span class="trk-note">Average rating ${rating.score.toFixed(1)} out of 10</span></div>`;
+  }
+
   function renderRate() {
     const head = state.title?.title || {};
     const current = state.title?.ratings?.[0]?.rating ?? null;
-    const pills = Array.from({ length: 10 }, (_, i) => i + 1).map((n) => `<button type="button" class="trk-rate${current === n ? " is-current" : ""}" data-trk-rate="${n}" aria-pressed="${current === n}"${sheet.busy ? " disabled" : ""}>${n}</button>`).join("");
+    const pills = Array.from({ length: 20 }, (_, i) => (i + 1) / 2).map((n) => `<button type="button" class="trk-rate${Number.isInteger(n) ? " is-right" : ""}${n <= current ? " is-lit" : ""}" data-trk-rate="${n}" aria-label="Rate ${n} out of 10" aria-pressed="${current === n}"${sheet.busy ? " disabled" : ""}>${symbol("star")}</button>`).join("");
     return `
       ${sheetHead(head, `Rate ${head.title || ""}`, current != null ? `Now ${current}/10` : "Not rated yet")}
       <div class="trk-form">
+        <div class="trk-rate-summary"><strong data-trk-rate-value>${current != null ? `${current}/10` : "Not rated"}</strong><span class="trk-note" data-trk-rate-label>${esc(ratingLabel(current))}</span></div>
         <div class="trk-rates" role="group" aria-label="Rating">${pills}</div>
+        <div class="trk-community" data-trk-community role="status">${communityRatingHtml()}</div>
         ${addEffectHtml("ratings")}
         ${sheet.error ? `<p class="trk-error" role="alert">${icon("error")}<span>${esc(sheet.error)}</span></p>` : ""}
         <footer class="trk-sheet-foot">
@@ -1679,6 +1861,10 @@
         ${log.message ? `<p class="trk-note">${esc(log.message)}</p>` : ""}
         ${results ? `<div class="trk-matches" role="list">${results}</div>` : ""}`;
     } else {
+      const coverKind = picked.type === "movie" ? "movie" : "tv";
+      const coverId = picked.tmdb || picked.ids?.tmdb;
+      const coverUrl = coverId ? `/art/tmdb/${coverKind}/${encodeURIComponent(coverId)}?fallback=2&kind=poster&size=w154` : "";
+      const cover = `<span class="trk-match-poster" data-trk-log-cover="${coverKind}">${coverUrl ? `<img src="${esc(coverUrl)}" alt="" decoding="async">` : symbol(coverKind)}</span>`;
       const targets = [["history", "Watched", "history"], ["watchlist", "Watchlist", "bookmark"], ["collection", "Collection", "video_library"]]
         .map(([id, label, ic]) => `<button type="button" class="cw-filter-chip${log.target === id ? " active" : ""}" data-trk-log-target="${id}" aria-pressed="${log.target === id}">${symbol(ic, "cw-type-icon")}<span>${esc(label)}</span></button>`).join("");
       const count = log.seasons?.find((s) => s.season === log.season)?.episodes || 0;
@@ -1688,10 +1874,13 @@
               <label class="trk-field"><span>Episode</span><select class="cw-select" data-trk-log-episode><option value="all"${log.episode === "all" ? " selected" : ""}>All ${count} episodes</option>${Array.from({ length: count }, (_, i) => i + 1).map((e) => `<option value="${e}"${String(log.episode) === String(e) ? " selected" : ""}>Episode ${e}</option>`).join("")}</select></label></div>`
           : `<p class="trk-note">Loading seasons...</p>`)
         : "";
-      const whenRow = log.target === "history" ? `<div class="trk-fields"><label class="trk-field"><span>When</span><input type="datetime-local" step="1" class="cw-input" data-trk-log-when value="${esc(log.when)}" max="${esc(localInput(new Date().toISOString()))}"></label></div>` : "";
+      const whenMode = log.whenMode || "today";
+      const whenChoices = [["today", "Today"], ["release", "Release date"], ["custom", "Choose date"]]
+        .map(([id, label]) => `<button type="button" class="cw-filter-chip${whenMode === id ? " active" : ""}" data-trk-log-date-mode="${id}" aria-pressed="${whenMode === id}">${esc(label)}</button>`).join("");
+      const whenRow = log.target === "history" ? `<div class="trk-field"><span>When</span><div class="cw-type-filter" role="group" aria-label="When">${whenChoices}</div>${whenMode === "custom" ? `<input type="datetime-local" step="1" class="cw-input cw-timestamp-input" data-trk-log-when aria-label="Watch date and time" value="${esc(log.when)}" max="${esc(localInput(new Date().toISOString()))}">` : ""}</div>` : "";
       const unlist = log.target === "history" && log.watchlistKey ? `<label class="trk-check"><input type="checkbox" class="cw-checkbox" data-trk-log-unlist${log.unlist ? " checked" : ""}><span>Remove from watchlist</span></label>` : "";
       body = `
-        <div class="trk-picked">${symbol(picked.type === "movie" ? "movie" : "tv")}<div><b>${esc(picked.title)}</b><small>${esc([picked.year, picked.type === "movie" ? "Movie" : "Show"].filter(Boolean).join(" · "))}</small></div>${log.fixed ? "" : `<button type="button" class="cw-btn" data-trk-log-repick>${icon("search")}<span>Change</span></button>`}</div>
+        <div class="trk-picked">${cover}<div><b>${esc(picked.title)}</b><small>${esc([picked.year, picked.type === "movie" ? "Movie" : "Show"].filter(Boolean).join(" · "))}</small></div>${log.fixed ? "" : `<button type="button" class="cw-btn" data-trk-log-repick>${icon("search")}<span>Change</span></button>`}</div>
         <div class="cw-type-filter" role="group" aria-label="Add to">${targets}</div>
         ${seasonSel}
         ${whenRow}
@@ -2120,6 +2309,7 @@
     };
     dialog.innerHTML = (renderers[sheet.mode] || renderChanges)();
     dialog.scrollTop = scroll;
+    if (sheet.mode === "rate") wireRatingPreview(dialog);
     if (el.hidden) {
       el.hidden = false;
       document.documentElement.classList.add("cw-ia-sheet-open");
@@ -2139,7 +2329,9 @@
   function openSheet(mode, extra = {}) {
     if (!sheet.el || sheet.el.hidden) sheet.lastFocus = document.activeElement;
     Object.assign(sheet, { mode, item: null, feature: "history", busy: false, error: "", keys: [], token: sheet.token + 1 }, extra);
+    if (mode === "rate") { sheet.communityRating = ""; sheet.communityScore = null; }
     renderSheet(true);
+    if (mode === "rate") loadCommunityRating(sheet.token);
   }
 
   function closeSheet() {
@@ -2292,7 +2484,7 @@
   }
 
   function openLog(prefill) {
-    const log = { type: "movie", q: "", results: [], message: "", pick: null, fixed: false, target: "history", when: localInput(new Date().toISOString()), seasons: null, season: 1, episode: "all", watchlistKey: "", unlist: true, searchToken: 0 };
+    const log = { type: "movie", q: "", results: [], message: "", pick: null, fixed: false, target: "history", whenMode: "today", when: localInput(new Date().toISOString()), seasons: null, season: 1, episode: "all", watchlistKey: "", unlist: true, searchToken: 0 };
     if (prefill) Object.assign(log, prefill, { fixed: true });
     openSheet("log", { log });
     if (log.pick?.type === "show") loadSeasons(log);
@@ -2378,25 +2570,49 @@
     } catch {}
   }
 
+  async function logWatchTimes(log, items) {
+    const mode = log.whenMode || "custom";
+    if (mode !== "release") {
+      const date = mode === "today" ? new Date() : new Date(log.when);
+      if (Number.isNaN(date.getTime()) || date.getTime() > Date.now()) throw new Error("Choose a valid watch date that is not in the future.");
+      return items.map(item => ({ ...item, watched_at: date.toISOString() }));
+    }
+    const pick = log.pick;
+    let dates;
+    if (pick.type === "show") {
+      const data = await getJSON(`/api/metadata/tmdb/season?tmdb=${encodeURIComponent(pick.tmdb)}&season=${encodeURIComponent(log.season)}`);
+      dates = items.map(item => data.episodes?.find(ep => Number(ep.episode) === item.episode)?.air_date);
+    } else {
+      const data = await getJSON("/api/metadata/resolve", { entity: "movie", ids: pick.ids });
+      dates = [data.result?.detail?.release_date];
+    }
+    return items.map((item, i) => {
+      const date = String(dates[i] || "").slice(0, 10);
+      const stamp = `${date}T12:00:00Z`;
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(date) || Number.isNaN(Date.parse(stamp))) throw new Error("No release date is available. Choose a date instead.");
+      if (date > new Date().toISOString().slice(0, 10)) throw new Error("The release date is in the future. Choose a date instead.");
+      return { ...item, watched_at: stamp };
+    });
+  }
+
   async function saveLog() {
     const log = sheet.log;
     const p = log.pick;
     if (!p) return;
-    const whenDate = log.when ? new Date(log.when) : new Date();
-    const when = whenDate.toISOString();
     let items;
     if (log.target === "history" && p.type === "show") {
       const season = Number(log.season);
       const count = log.seasons?.find((s) => s.season === season)?.episodes || 0;
       const eps = log.episode === "all" ? Array.from({ length: count }, (_, i) => i + 1) : [Number(log.episode)];
-      items = eps.map((e) => ({ type: "episode", series_title: p.title, series_year: p.year, season, episode: e, show_ids: { ...p.ids }, watched_at: when }));
+      items = eps.map((e) => ({ type: "episode", series_title: p.title, series_year: p.year, season, episode: e, show_ids: { ...p.ids } }));
     } else {
-      items = [{ type: p.type, title: p.title, year: p.year, ids: { ...p.ids }, ...(log.target === "history" ? { watched_at: when } : {}) }];
+      items = [{ type: p.type, title: p.title, year: p.year, ids: { ...p.ids } }];
     }
     sheet.busy = true;
     sheet.error = "";
     renderSheet();
     try {
+      if (log.target === "history") items = await logWatchTimes(log, items);
       const data = await getJSON("/api/tracker/add", {
         feature: log.target,
         provider_instance: state.instance,
@@ -2710,6 +2926,13 @@
         pickLog(Number(pick.dataset.trkLogPick));
         return;
       }
+      const dateMode = event.target.closest("[data-trk-log-date-mode]");
+      if (dateMode) {
+        log.whenMode = dateMode.dataset.trkLogDateMode;
+        sheet.error = "";
+        renderSheet();
+        return;
+      }
       const target = event.target.closest("[data-trk-log-target]");
       if (target) {
         log.target = target.dataset.trkLogTarget;
@@ -2876,6 +3099,13 @@
       if (sheet.el?.contains(event.target)) return;
       if (event.target.closest("[data-trk-pick]")) return;
       if (handlePanelClick(event)) return;
+      const layout = event.target.closest("[data-trk-layout]");
+      if (layout) {
+        state.layouts[state.view] = layout.dataset.trkLayout === "grid" ? "grid" : "list";
+        saveView();
+        renderSlots(true);
+        return;
+      }
       const view = event.target.closest("[data-trk-view]");
       if (view) {
         if (view.dataset.trkView === state.view) return;
@@ -2920,7 +3150,7 @@
         if (item) openSheet("edit", { item, feature: listFeature() });
         return;
       }
-      const row = event.target.closest("tr.trk-play");
+      const row = event.target.closest(".trk-play");
       if (row) {
         selectRef(rowRef(row));
         return;
@@ -2978,7 +3208,7 @@
         state.root.querySelector(`.trk-tabs [data-trk-view="${tabs[next].dataset.trkView}"]`)?.focus();
         return;
       }
-      const row = event.target.closest?.("tr.trk-play");
+      const row = event.target.closest?.(".trk-play");
       if (!row || (event.key !== "Enter" && event.key !== " ") || event.target.closest("input, button")) return;
       event.preventDefault();
       selectRef(rowRef(row));
@@ -3024,7 +3254,15 @@
     });
     root.addEventListener("error", (event) => {
       const img = event.target;
-      if (!(img instanceof HTMLImageElement) || !img.closest(".trk-poster")) return;
+      if (!(img instanceof HTMLImageElement)) return;
+      const cover = img.closest("[data-trk-log-cover]");
+      if (cover) {
+        cover.innerHTML = symbol(cover.dataset.trkLogCover === "movie" ? "movie" : "tv");
+        return;
+      }
+      if (img.closest(".trk-grid-art")) { img.remove(); return; }
+      if (img.classList.contains("trk-episode-backdrop")) { img.remove(); return; }
+      if (!img.closest(".trk-poster")) return;
       img.closest(".trk-poster").classList.add("is-empty");
       img.remove();
     }, true);
