@@ -1420,6 +1420,7 @@
     if (!collectionSelectable()) {
       collectionState.selected.clear();
       if (bar) bar.hidden = true;
+      window.CW?.SelectionBar?.update(bar, 0);
       return;
     }
     grid?.querySelectorAll("article[data-collection-key]").forEach((node) => {
@@ -1432,7 +1433,8 @@
     if (!bar) return;
     bar.hidden = collectionState.selected.size === 0;
     const label = bar.querySelector("[data-collection-count]");
-    if (label) label.textContent = numberFmt.format(collectionState.selected.size);
+    if (label && collectionState.selected.size) label.textContent = numberFmt.format(collectionState.selected.size);
+    window.CW?.SelectionBar?.update(bar, collectionState.selected.size);
   }
 
   async function selectCollection(mode) {
@@ -2162,22 +2164,25 @@
     const comparable = item?.coverage_comparable !== false;
     const actionable = action && comparable;
     const full = comparable && total > 0 && !missing.length;
-    const base = Number(item?.rating);
     const conflict = withRatings && item?.agree === false;
+    const adjusted = withRatings && !conflict && item?.rating_adjusted === true;
     const chips = providerChipStrip(present
-      .map((ref) => timelineChipEntry(ref, "present", { action: actionable, ...(withRatings ? { rating: ref.rating, differs: ref.rating != null && ref.rating !== base } : {}) }))
+      .map((ref) => timelineChipEntry(ref, "present", { action: actionable, ...(withRatings ? { rating: ref.rating } : {}) }))
       .concat(missing.map((ref) => timelineChipEntry(ref, "missing", { action: actionable }))), "cw-hist-provider");
+    const coverage = full
+      ? (total === 1 ? "On 1 provider" : "On every provider")
+      : `On ${numberFmt.format(present.length)} of ${numberFmt.format(total)}`;
     const label = !comparable
       ? "Show-level status · Not comparable"
       : conflict
-      ? "Scores differ"
-      : full
-        ? (total === 1 ? "On 1 provider" : "On every provider")
-        : `On ${numberFmt.format(present.length)} of ${numberFmt.format(total)}`;
+      ? `${coverage} · Scores differ`
+      : coverage;
     const state = conflict ? " is-conflict" : full ? " is-full" : "";
+    const hint = conflict ? "Scores still differ after provider rounding or reaction conversion. Badges show each provider's saved score."
+      : adjusted ? "Equivalent scores. Scores match after provider rounding or reaction conversion. Badges show each provider's saved score." : "Add or remove on your providers";
     const labelHtml = actionable
-      ? `<button type="button" class="cw-hist-coverage-label" data-ia-cover aria-haspopup="dialog" title="Add or remove on your providers">${esc(label)}<span class="material-symbols-rounded" aria-hidden="true">expand_more</span></button>`
-      : `<span class="cw-hist-coverage-label">${esc(label)}</span>`;
+      ? `<button type="button" class="cw-hist-coverage-label" data-ia-cover aria-haspopup="dialog" title="${esc(hint)}">${esc(label)}<span class="material-symbols-rounded" aria-hidden="true">expand_more</span></button>`
+      : `<span class="cw-hist-coverage-label"${adjusted || conflict ? ` title="${esc(hint)}"` : ""}>${esc(label)}</span>`;
     return `<span class="cw-hist-coverage${state}"><span class="cw-hist-providers">${chips}</span>${labelHtml}</span>`;
   }
 
@@ -2935,11 +2940,13 @@
       if (!selectable()) {
         state.selected.clear();
         bar.hidden = true;
+        window.CW?.SelectionBar?.update(bar, 0);
         return;
       }
       bar.hidden = state.selected.size === 0;
       const label = bar.querySelector("[data-timeline-count]");
-      if (label) label.textContent = count(state.selected.size);
+      if (label && state.selected.size) label.textContent = count(state.selected.size);
+      window.CW?.SelectionBar?.update(bar, state.selected.size);
     }
 
     async function selectResults(mode) {
@@ -3892,11 +3899,13 @@
       if (!canAct()) {
         state.selected.clear();
         bar.hidden = true;
+        window.CW?.SelectionBar?.update(bar, 0);
         return;
       }
       bar.hidden = state.selected.size === 0;
       const label = bar.querySelector("[data-playback-count]");
-      if (label) label.textContent = count(state.selected.size);
+      if (label && state.selected.size) label.textContent = count(state.selected.size);
+      window.CW?.SelectionBar?.update(bar, state.selected.size);
     }
 
     function tile(tone, icon, label, note, value, filter = null) {
