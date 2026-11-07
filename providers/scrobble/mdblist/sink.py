@@ -47,6 +47,10 @@ MDBLIST_API = "https://api.mdblist.com"
 APP_AGENT = http_user_agent("Watcher", override_env="CW_MDBLIST_UA")
 _AR_TTL = 60
 
+# MDBList's pause endpoint marks the item watched when progress is at or above
+# this value, so pauses at that line are sent one point below to stay resumable.
+_PAUSE_WATCHED_AT = 80
+
 _RESOLVE_TTL_S = 30 * 86400
 _RESOLVE_NEG_TTL_S = 6 * 3600
 
@@ -711,6 +715,16 @@ class MDBListSink(ScrobbleSink):
                         "progress_step": step, "previous_bucket": last_bucket, "progress_bucket": bucket}
             if last_act == "start":
                 p_payload = bucket
+
+        # MDBList marks the item watched when a pause arrives at >= 80%, so send
+        # pauses at that line or above at 79% to keep the session resumable.
+        if action == "pause" and p_payload >= _PAUSE_WATCHED_AT:
+            _log(
+                f"Clamp pause {p_payload}% → {_PAUSE_WATCHED_AT - 1}% "
+                f"(MDBList marks watched at >= {_PAUSE_WATCHED_AT}%)",
+                "DEBUG",
+            )
+            p_payload = _PAUSE_WATCHED_AT - 1
 
         self._p_sess[(sk, mk)] = p_send
         if p_send > (p_glob if p_glob >= 0 else -1):
