@@ -641,15 +641,15 @@
     const tmdb = tmdbOf(item);
     const imdb = meta?.ids?.imdb || item?.ids?.imdb || "";
     const out = [];
-    if (window.CW?.Trailer?.has?.(meta)) out.push(`<button class="cw-mm-btn" type="button" data-mm-trailer>${icon("play_arrow")}Watch trailer</button>`);
+    if (window.CW?.Trailer?.has?.(meta)) out.push(`<button class="cw-mm-btn" type="button" data-mm-trailer aria-label="Watch trailer">${icon("play_arrow")}<span class="cw-mm-btn-label">Watch trailer</span></button>`);
     out.push(`<a class="cw-mm-btn" href="https://www.themoviedb.org/${artType(item)}/${encodeURIComponent(tmdb)}" target="_blank" rel="noopener">TMDB</a>`);
     if (imdb) out.push(`<a class="cw-mm-btn" href="https://www.imdb.com/title/${encodeURIComponent(imdb)}/" target="_blank" rel="noopener">IMDb</a>`);
-    if (tmdb && canChangeArt()) out.push(`<button type="button" class="cw-mm-btn" data-mm-artwork title="Change poster, logo or background" aria-haspopup="dialog">${icon("image")}Artwork</button>`);
+    if (tmdb && canChangeArt()) out.push(`<button type="button" class="cw-mm-btn" data-mm-artwork title="Change poster, logo or background" aria-label="Artwork" aria-haspopup="dialog">${icon("image")}<span class="cw-mm-btn-label">Artwork</span></button>`);
     const onShelf = tmdb ? window.CW?.Shelf?.peek?.(artType(item), tmdb) : null;
     if (tmdb && canEditShelf() && !onShelf && !collectionAdds()) {
-      out.push(`<button type="button" class="cw-mm-btn" data-mm-shelf title="Your copies of this title" aria-haspopup="dialog">${icon("shelves")}Add to shelf</button>`);
+      out.push(`<button type="button" class="cw-mm-btn" data-mm-shelf title="Your copies of this title" aria-label="Add to shelf" aria-haspopup="dialog">${icon("shelves")}<span class="cw-mm-btn-label">Add to shelf</span></button>`);
     }
-    if (removable()) out.push(`<button type="button" class="cw-mm-btn is-danger" data-mm-clear-all aria-haspopup="dialog" title="Remove from everything" aria-label="Remove from everything">${icon("delete")}Remove</button>`);
+    if (removable()) out.push(`<button type="button" class="cw-mm-btn is-danger" data-mm-clear-all aria-haspopup="dialog" title="Remove from everything" aria-label="Remove from everything">${icon("delete")}<span class="cw-mm-btn-label">Remove</span></button>`);
     const score = Number(meta?.detail?.vote_average) || (Number(meta?.score) || 0) / 10;
     if (score > 0) {
       const votes = Number(meta?.vote_count) || 0;
@@ -733,7 +733,8 @@
     const shelf = window.CW?.Shelf || {};
     const tmdb = tmdbOf(state.item);
     const disc = shelf.discUrl?.(artType(state.item), tmdb, format) || "";
-    const plate = copy?.packaging === "steelbook" ? "Steelbook" : copy?.edition || "";
+    const caseKind = shelf.caseKind?.(format, copy?.packaging || "") || "plain";
+    const cover = shelf.caseHtml?.({ format, packaging: copy?.packaging || "", poster: posterUrl(state.item) }) || `<span class="cw-case" data-case="plain"><img class="cw-case-art" src="${esc(posterUrl(state.item))}" alt=""></span>`;
     const status = info.entry ? shelf.statuses?.[info.entry.status] || "Owned" : "In your collection";
     const statusLine = [status, copies.length ? `${copies.length} ${copies.length === 1 ? "copy" : "copies"}` : ""].filter(Boolean).join(" · ");
     const pill = shelf.pill?.({ format, media, service: copy?.service }) || "";
@@ -749,10 +750,10 @@
       ? `${copy ? `<button type="button" class="cw-mm-btn" data-mm-coll-edit="${index}">${icon("edit")}Edit copy</button>` : ""}<button type="button" class="cw-mm-btn" data-mm-coll-add>${icon("add")}${info.entry ? "Add copy" : "Add to shelf"}</button>`
       : "";
     return `<section class="cw-mm-coll" aria-label="Collection">
-      <div class="cw-mm-coll-art${disc ? " has-disc" : ""}">
+      ${caseKind !== "plain" || disc ? `<div class="cw-mm-coll-art${disc ? " has-disc" : ""}" data-case="${esc(caseKind)}">
         ${disc ? `<img class="cw-mm-coll-disc" src="${esc(disc)}" alt="" loading="lazy" decoding="async" onerror="this.closest('.cw-mm-coll-art')?.classList.remove('has-disc');this.remove()">` : ""}
-        <figure class="cw-mm-coll-case"><img src="${esc(posterUrl(state.item))}" alt="" decoding="async" onerror="${placeholder}">${plate ? `<figcaption${copy?.packaging === "steelbook" ? ' class="is-steel"' : ""}>${esc(plate)}</figcaption>` : ""}</figure>
-      </div>
+        ${cover}
+      </div>` : ""}
       <div class="cw-mm-coll-main">
         <div class="cw-mm-coll-head"><h3>Collection</h3><span>${esc(statusLine)}</span>${pill}</div>
         ${tabs}
