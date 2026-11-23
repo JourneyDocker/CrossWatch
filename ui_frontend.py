@@ -990,7 +990,7 @@ html[data-cw-initial-tab="settings"] #page-settings{display:block!important}
   <div class="brand" role="button" tabindex="0" title="Go to Main" onclick="showTab('main')" onkeypress="if(event.key==='Enter'||event.key===' ')showTab('main')">
     <img class="logo" src="/assets/img/CROSSWATCH.svg?v=__CW_VERSION__" alt="CrossWatch">
     <span class="brand-text">
-      <span class="name">CrossWatch</span>
+      <span class="name cw-wordmark">CrossWatch<span class="brand-dot" aria-hidden="true">.</span></span>
       <span class="version">__CW_CURRENT_VERSION__</span>
     </span>
   </div>
@@ -2249,7 +2249,7 @@ __CW_NAV_PROFILE_MENU__
         </section>
 
         <section class="cw-settings-pane cw-page-maintenance" data-pane="maintenance">
-          <header class="mt-page-head"><h3>Maintenance</h3><p>Cleanup and diagnostics.</p></header>
+          <div class="mt-page-head"><h3>Maintenance</h3><p>Cleanup and diagnostics.</p></div>
           <div id="sec-troubleshoot" data-accordion="off">
             <section class="cw-page-panel mt-debug">
               <div><h4>Debug logging</h4><p>Choose the detail included in logs.</p></div>
@@ -3091,7 +3091,7 @@ def _get_user_page_html(user: dict | None, *, hub: bool) -> str:
   <div class="brand" role="button" tabindex="0" title="Go to Hub" onclick="location.href='/hub'" onkeypress="if(event.key==='Enter'||event.key===' ')location.href='/hub'">
     <img class="logo" src="/assets/img/CROSSWATCH.svg?v=__CW_VERSION__" alt="CrossWatch">
     <span class="brand-text">
-      <span class="name">CrossWatch</span>
+      <span class="name cw-wordmark">CrossWatch<span class="brand-dot" aria-hidden="true">.</span></span>
       <span class="version">__CW_CURRENT_VERSION__</span>
     </span>
   </div>
