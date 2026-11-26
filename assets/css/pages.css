@@ -39,7 +39,6 @@
 .cw-view-status[data-state="error"]{position:relative;inset:auto;display:flex;align-items:center;flex-wrap:wrap;gap:8px 12px;padding:10px 14px;pointer-events:auto}
 .cw-view-status[data-state="error"][hidden]{display:none}
 .cw-view-status .cw-btn{margin-left:auto;min-height:32px;padding:4px 12px}
-#page-tracker .cw-page-loading{align-content:center;gap:18px;min-height:160px}
 [data-view-loading] :is([data-trk-action="refresh"],[data-timeline-refresh],[data-collection-refresh])>.material-symbols-rounded,[data-view-loading] .refresh-insights>.material-symbols-rounded{animation:cwRefreshSpin .9s linear infinite}
 @keyframes cwRefreshSpin{to{transform:rotate(360deg)}}
 @media(prefers-reduced-motion:reduce){[data-view-loading] :is([data-trk-action="refresh"],[data-timeline-refresh],[data-collection-refresh])>.material-symbols-rounded,[data-view-loading] .refresh-insights>.material-symbols-rounded{animation:none}}
@@ -1899,7 +1898,8 @@ body.cw-profile-page .cw-profile-tabs button{display:inline-flex;align-items:cen
 .cw-hub-records .cw-play-card .cw-hist-info{padding:12px 14px;gap:6px}
 .cw-page-empty{position:relative;isolation:isolate;grid-column:1/-1;display:grid;justify-items:center;align-content:center;gap:22px;min-height:280px;padding:56px 24px 48px;overflow:hidden;text-align:center}
 .cw-page-empty::before{content:"";position:absolute;inset:0;z-index:-1;pointer-events:none}
-.cw-page-empty-art{display:grid;place-items:center;width:76px;height:76px;margin-bottom:12px}
+.cw-page-empty-art{position:relative;display:grid;place-items:center;width:76px;height:76px;margin-bottom:12px}
+.cw-page-empty.is-loading .cw-page-empty-art::after{content:"";position:absolute;inset:-7px;border-radius:50%;pointer-events:none}
 .cw-page-empty .cw-page-empty-art>.material-symbols-rounded{font-size:36px;line-height:1}
 .cw-page-empty-text{max-width:48ch;line-height:1.5}
 .cw-page-empty.is-compact{grid-auto-flow:column;justify-content:center;gap:12px;min-height:0;padding:16px 18px;text-align:left}
@@ -2796,7 +2796,7 @@ html.cw-ia-sheet-open,html.cw-ia-sheet-open body{overflow:hidden}
 .cw-flip-card .cw-airing-back>img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;z-index:-2}
 .cw-flip-toggle{position:absolute;z-index:3;top:12px;right:12px;display:grid;place-items:center;width:32px;height:32px;padding:0;cursor:pointer}
 .cw-flip-toggle .material-symbols-rounded{font-size:18px;line-height:1}
-@container (min-width:400px){.cw-flip-card .cw-airing-back{padding:18px 20px}.cw-flip-card .cw-airing-title{font-size:22px;padding-right:40px}.cw-flip-card .cw-airing-return{top:12px;right:12px;width:34px;height:34px}.cw-flip-card .cw-airing-summary{gap:14px;margin-top:12px}.cw-flip-card .cw-airing-ring{width:68px;height:68px}.cw-flip-card .cw-airing-ring>strong{font-size:32px}.cw-flip-card .cw-airing-ring>strong>span{font-size:18px}.cw-flip-card .cw-airing-catchup>strong{font-size:26px}.cw-flip-card .cw-airing-catchup>span{font-size:13px;gap:5px}.cw-flip-card .cw-airing-catchup .material-symbols-rounded{font-size:16px}.cw-flip-card .cw-airing-season{margin-top:auto;margin-bottom:8px;font-size:12px}.cw-flip-card .cw-airing-episodes{gap:6px}.cw-flip-card .cw-airing-episodes button{height:46px;gap:4px;border-radius:8px;font-size:13px}.cw-flip-card .cw-airing-episodes .material-symbols-rounded{font-size:16px}.cw-flip-card .cw-airing-next{margin-top:14px;padding-top:12px;min-height:34px}.cw-flip-card :is(.cw-airing-next-state,.cw-airing-next-copy){font-size:13px}.cw-flip-card .cw-airing-next>.material-symbols-rounded{font-size:18px}}
+@container (min-width:320px){.cw-flip-card .cw-airing-back{padding:18px 20px}.cw-flip-card .cw-airing-title{font-size:22px;padding-right:40px}.cw-flip-card .cw-airing-return{top:12px;right:12px;width:34px;height:34px}.cw-flip-card .cw-airing-summary{gap:14px;margin-top:12px}.cw-flip-card .cw-airing-ring{width:68px;height:68px}.cw-flip-card .cw-airing-ring>strong{font-size:32px}.cw-flip-card .cw-airing-ring>strong>span{font-size:18px}.cw-flip-card .cw-airing-catchup>strong{font-size:26px}.cw-flip-card .cw-airing-catchup>span{font-size:13px;gap:5px}.cw-flip-card .cw-airing-catchup .material-symbols-rounded{font-size:16px}.cw-flip-card .cw-airing-season{margin-top:auto;margin-bottom:8px;font-size:12px}.cw-flip-card .cw-airing-episodes{gap:6px}.cw-flip-card .cw-airing-episodes button{height:46px;gap:4px;border-radius:8px;font-size:13px}.cw-flip-card .cw-airing-episodes .material-symbols-rounded{font-size:16px}.cw-flip-card .cw-airing-next{margin-top:14px;padding-top:12px;min-height:34px}.cw-flip-card :is(.cw-airing-next-state,.cw-airing-next-copy){font-size:13px}.cw-flip-card .cw-airing-next>.material-symbols-rounded{font-size:18px}}
 .cw-flip-card .cw-cw-remaining,#page-tracker .cw-flip-card .trk-overview-badge{right:52px}
 @media(pointer:coarse){.cw-flip-toggle{top:8px;right:8px;width:40px;height:40px}.cw-flip-card .cw-cw-remaining,#page-tracker .cw-flip-card .trk-overview-badge{right:56px}}
 #page-tracker .trk-overview-progress{position:absolute;z-index:1;left:0;bottom:0;right:0;height:4px}
